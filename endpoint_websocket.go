@@ -333,7 +333,9 @@ func (e *endpointWebSocket) provide() (string, io.ReadWriteCloser, error) {
 			shouldRetry, retryAfter := e.shouldRetry(err)
 			if !shouldRetry {
 				e.setState(WSStateDisconnected, err)
-				return "", nil, fmt.Errorf("connection failed and retry not allowed: %w", err)
+				// Wait for termination - don't return error as gomavlib only expects errTerminated
+				<-e.terminate
+				return "", nil, errTerminated
 			}
 
 			e.currentRetryPeriod = retryAfter
