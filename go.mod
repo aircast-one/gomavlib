@@ -1,4 +1,4 @@
-module github.com/bluenviron/gomavlib/v3
+module github.com/pavliha/gomavlib/v3
 
 go 1.24.0
 
