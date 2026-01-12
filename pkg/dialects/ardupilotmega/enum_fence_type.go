@@ -3,7 +3,7 @@
 package ardupilotmega
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/common"
 )
 
 // Fence types to enable or disable when using MAV_CMD_DO_FENCE_ENABLE.

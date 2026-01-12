@@ -3,7 +3,7 @@
 package paparazzi
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/common"
 )
 
 type FENCE_BREACH = common.FENCE_BREACH

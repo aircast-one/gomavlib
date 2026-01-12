@@ -3,7 +3,7 @@
 package ualberta
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/common"
 )
 
 // A message containing logged data which requires a LOGGING_ACK to be sent back

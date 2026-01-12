@@ -3,7 +3,7 @@
 package marsh
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/common"
 )
 
 // The system time is the time of the master clock.

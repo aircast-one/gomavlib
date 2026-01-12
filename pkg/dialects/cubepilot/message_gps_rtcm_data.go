@@ -3,7 +3,7 @@
 package cubepilot
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/common"
 )
 
 // RTCM message for injecting into the onboard GPS (used for DGPS)

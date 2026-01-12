@@ -3,7 +3,7 @@
 package ardupilotmega
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/common"
 )
 
 // A change to the sequence number indicates that the set of AVAILABLE_MODES has changed.

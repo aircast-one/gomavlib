@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/bluenviron/gomavlib/v3/pkg/dialect"
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/ardupilotmega"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialect"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/ardupilotmega"
 	"github.com/stretchr/testify/require"
 )
 

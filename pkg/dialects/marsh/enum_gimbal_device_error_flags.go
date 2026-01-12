@@ -3,7 +3,7 @@
 package marsh
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/common"
 )
 
 // Gimbal device (low level) error flags (bitmap, 0 means no error)

@@ -7,9 +7,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bluenviron/gomavlib/v3/pkg/dialect"
-	"github.com/bluenviron/gomavlib/v3/pkg/frame"
-	"github.com/bluenviron/gomavlib/v3/pkg/streamwriter"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialect"
+	"github.com/aircast-one/gomavlib/v3/pkg/frame"
+	"github.com/aircast-one/gomavlib/v3/pkg/streamwriter"
 )
 
 func TestEndpointServer(t *testing.T) {

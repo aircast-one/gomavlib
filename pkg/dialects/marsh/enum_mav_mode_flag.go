@@ -3,7 +3,7 @@
 package marsh
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/minimal"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/minimal"
 )
 
 // These flags encode the MAV mode, see MAV_MODE enum for useful combinations.

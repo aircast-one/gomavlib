@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bluenviron/gomavlib/v3/pkg/x25"
+	"github.com/aircast-one/gomavlib/v3/pkg/x25"
 )
 
 type fieldType int

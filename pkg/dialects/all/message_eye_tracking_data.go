@@ -3,7 +3,7 @@
 package all
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/marsh"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/marsh"
 )
 
 // Data for tracking of pilot eye gaze. This is the primary message for MARSH_TYPE_EYE_TRACKER.

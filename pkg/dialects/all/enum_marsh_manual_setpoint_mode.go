@@ -3,7 +3,7 @@
 package all
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/marsh"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/marsh"
 )
 
 // Usage of MANUAL_SETPOINT message, sent in mode_switch field.

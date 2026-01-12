@@ -8,8 +8,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/bluenviron/gomavlib/v3"
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v3"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/common"
 )
 
 func main() {

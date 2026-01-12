@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bluenviron/gomavlib/v3/pkg/frame"
-	"github.com/bluenviron/gomavlib/v3/pkg/message"
+	"github.com/aircast-one/gomavlib/v3/pkg/frame"
+	"github.com/aircast-one/gomavlib/v3/pkg/message"
 	"github.com/stretchr/testify/require"
 )
 

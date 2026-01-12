@@ -3,7 +3,7 @@
 package all
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/marsh"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/marsh"
 )
 
 // General error state of a motion platform system.

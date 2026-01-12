@@ -6,8 +6,8 @@ import (
 	"io"
 	"time"
 
-	"github.com/bluenviron/gomavlib/v3/pkg/dialect"
-	"github.com/bluenviron/gomavlib/v3/pkg/frame"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialect"
+	"github.com/aircast-one/gomavlib/v3/pkg/frame"
 )
 
 // Entry is a Telemetry log entry.

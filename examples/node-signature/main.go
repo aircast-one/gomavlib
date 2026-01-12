@@ -4,9 +4,9 @@ package main
 import (
 	"log"
 
-	"github.com/bluenviron/gomavlib/v3"
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/ardupilotmega"
-	"github.com/bluenviron/gomavlib/v3/pkg/frame"
+	"github.com/aircast-one/gomavlib/v3"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/ardupilotmega"
+	"github.com/aircast-one/gomavlib/v3/pkg/frame"
 )
 
 // this example shows how to:

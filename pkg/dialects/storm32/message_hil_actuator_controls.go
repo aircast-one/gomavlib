@@ -3,7 +3,7 @@
 package storm32
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/common"
 )
 
 // Sent from autopilot to simulation. Hardware in the loop control outputs. Alternative to HIL_CONTROLS.

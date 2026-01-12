@@ -5,7 +5,7 @@ go 1.24.0
 require (
 	bou.ke/monkey v1.0.2
 	github.com/alecthomas/kong v1.12.1
-	github.com/bluenviron/gomavlib/v3 v3.2.1
+	github.com/bluenviron/gomavlib/v3 v3.3.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/pion/transport/v2 v2.2.10
 	github.com/stretchr/testify v1.11.1

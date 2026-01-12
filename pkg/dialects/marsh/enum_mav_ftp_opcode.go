@@ -3,7 +3,7 @@
 package marsh
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/common"
 )
 
 // MAV FTP opcodes: https://mavlink.io/en/services/ftp.html

@@ -3,7 +3,7 @@
 package all
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/uavionix"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/uavionix"
 )
 
 // Status message with information from UCP Heartbeat and Status messages.

@@ -3,7 +3,7 @@
 package asluav
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/common"
 )
 
 // Flags to report failure cases over the high latency telemetry.

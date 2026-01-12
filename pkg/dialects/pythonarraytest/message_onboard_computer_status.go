@@ -3,7 +3,7 @@
 package pythonarraytest
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/common"
 )
 
 // Hardware status sent by an onboard computer.

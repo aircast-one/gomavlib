@@ -6,9 +6,9 @@ import (
 	"errors"
 	"io"
 
-	"github.com/bluenviron/gomavlib/v3/pkg/frame"
-	"github.com/bluenviron/gomavlib/v3/pkg/message"
-	"github.com/bluenviron/gomavlib/v3/pkg/streamwriter"
+	"github.com/aircast-one/gomavlib/v3/pkg/frame"
+	"github.com/aircast-one/gomavlib/v3/pkg/message"
+	"github.com/aircast-one/gomavlib/v3/pkg/streamwriter"
 )
 
 const (

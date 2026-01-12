@@ -3,7 +3,7 @@
 package marsh
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v3/pkg/dialects/common"
 )
 
 // A data stream is not a fixed set of messages, but rather a
