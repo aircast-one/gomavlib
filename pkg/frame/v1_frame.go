@@ -20,7 +20,13 @@ func peekAndDiscard(br *bufio.Reader, size int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	br.Discard(size) //nolint:errcheck
+	n, err := br.Discard(size)
+	if err != nil {
+		return nil, fmt.Errorf("discard failed: %w", err)
+	}
+	if n < size {
+		return nil, fmt.Errorf("discard incomplete: wanted %d, got %d", size, n)
+	}
 	return buf, nil
 }
 

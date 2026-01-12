@@ -154,6 +154,14 @@ func (ch *Channel) runReader() error {
 			var eerr frame.ReadError
 			if errors.As(err, &eerr) {
 				ch.node.pushEvent(&EventParseError{err, ch})
+				// Resync buffer to next valid magic byte to prevent cascading errors
+				if _, resyncErr := ch.frameWriter.Resync(); resyncErr != nil {
+					// If resync fails with EOF or similar, return the error
+					if !errors.As(resyncErr, &eerr) {
+						return resyncErr
+					}
+					// Otherwise it's another parse-related issue, continue trying
+				}
 				continue
 			}
 			return err

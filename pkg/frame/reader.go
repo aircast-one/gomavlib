@@ -116,6 +116,29 @@ func (r *Reader) Initialize() error {
 	return nil
 }
 
+// Resync scans the buffer for the next valid MAVLink magic byte (0xFE or 0xFD).
+// This should be called after a parse error to realign the buffer to the next
+// potential frame boundary. Returns the number of bytes skipped, or an error
+// if no valid magic byte is found within the buffer limit (512 bytes).
+func (r *Reader) Resync() (int, error) {
+	skipped := 0
+	for skipped < bufferSize {
+		b, err := r.BufByteReader.ReadByte()
+		if err != nil {
+			return skipped, err
+		}
+		if b == V1MagicByte || b == V2MagicByte {
+			// Found a valid magic byte, put it back so Read() can use it
+			if err := r.BufByteReader.UnreadByte(); err != nil {
+				return skipped, fmt.Errorf("unread failed: %w", err)
+			}
+			return skipped, nil
+		}
+		skipped++
+	}
+	return skipped, fmt.Errorf("no valid magic byte found after scanning %d bytes", skipped)
+}
+
 // Read reads a Frame from the reader.
 // It must not be called by multiple routines in parallel.
 func (r *Reader) Read() (Frame, error) {
