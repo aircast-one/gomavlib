@@ -351,24 +351,45 @@ func TestWebTransportEndpoint_BackoffIncrease(t *testing.T) {
 	e := conf.(*endpointWebTransport)
 	defer e.close()
 
-	// Initial period should be 50ms
-	require.Equal(t, 50*time.Millisecond, e.currentRetryPeriod)
+	// Test backoff calculation via retryState
+	// Initial: BeforeAttempt should not wait
+	shouldWait, waitDuration := e.retryState.BeforeAttempt()
+	require.False(t, shouldWait, "First attempt should not wait")
+	require.Equal(t, time.Duration(0), waitDuration)
 
-	// Test backoff calculation by simulating the formula used in provide()
-	// First backoff: 50 * 2.0 = 100ms
-	nextPeriod := time.Duration(float64(e.currentRetryPeriod) * e.conf.BackoffMultiplier)
-	nextPeriod = min(nextPeriod, e.conf.MaxRetryPeriod)
-	require.Equal(t, 100*time.Millisecond, nextPeriod)
+	// Record first attempt and error
+	e.retryState.RecordAttempt()
+	e.retryState.RecordError()
 
-	// Second backoff: 100 * 2.0 = 200ms (at cap)
-	nextPeriod = time.Duration(float64(nextPeriod) * e.conf.BackoffMultiplier)
-	nextPeriod = min(nextPeriod, e.conf.MaxRetryPeriod)
-	require.Equal(t, 200*time.Millisecond, nextPeriod)
+	// After first error: 50ms wait
+	shouldWait, waitDuration = e.retryState.BeforeAttempt()
+	require.True(t, shouldWait)
+	require.Equal(t, 50*time.Millisecond, waitDuration)
 
-	// Third backoff: 200 * 2.0 = 400ms but capped at 200ms
-	nextPeriod = time.Duration(float64(nextPeriod) * e.conf.BackoffMultiplier)
-	nextPeriod = min(nextPeriod, e.conf.MaxRetryPeriod)
-	require.Equal(t, 200*time.Millisecond, nextPeriod) // Capped
+	// Record second attempt and error (backoff increases to 75ms due to 1.5 multiplier)
+	// But we configured 2.0 multiplier, so 50 * 2.0 = 100ms
+	e.retryState.RecordAttempt()
+	e.retryState.RecordError()
+
+	shouldWait, waitDuration = e.retryState.BeforeAttempt()
+	require.True(t, shouldWait)
+	require.Equal(t, 100*time.Millisecond, waitDuration)
+
+	// Record third attempt and error: 100 * 2.0 = 200ms (at cap)
+	e.retryState.RecordAttempt()
+	e.retryState.RecordError()
+
+	shouldWait, waitDuration = e.retryState.BeforeAttempt()
+	require.True(t, shouldWait)
+	require.Equal(t, 200*time.Millisecond, waitDuration)
+
+	// Record fourth attempt and error: 200 * 2.0 = 400ms but capped at 200ms
+	e.retryState.RecordAttempt()
+	e.retryState.RecordError()
+
+	shouldWait, waitDuration = e.retryState.BeforeAttempt()
+	require.True(t, shouldWait)
+	require.Equal(t, 200*time.Millisecond, waitDuration) // Capped
 }
 
 // TestWebTransportEndpoint_TLSConfig tests custom TLS configuration

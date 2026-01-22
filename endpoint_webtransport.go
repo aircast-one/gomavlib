@@ -18,9 +18,55 @@ import (
 	"github.com/quic-go/webtransport-go"
 )
 
-// Package-level logger for WebTransport debugging
-// Uses standard log package to avoid external dependencies
-var wtLogger = log.New(os.Stderr, "[gomavlib-webtransport] ", log.LstdFlags|log.Lmicroseconds)
+// WebTransportLogger interface allows custom logging implementations.
+// If not set, a default stderr logger is used.
+type WebTransportLogger interface {
+	Printf(format string, v ...interface{})
+}
+
+// defaultWTLogger management with thread-safe access
+var (
+	wtLoggerMu      sync.RWMutex
+	wtLoggerInitOnce sync.Once
+	wtLogger        WebTransportLogger
+)
+
+// getDefaultWTLogger returns the current WebTransport logger with lazy initialization.
+// Thread-safe for concurrent access.
+func getDefaultWTLogger() WebTransportLogger {
+	// Lazy initialization on first access
+	wtLoggerInitOnce.Do(func() {
+		wtLogger = log.New(os.Stderr, "[gomavlib-webtransport] ", log.LstdFlags|log.Lmicroseconds)
+	})
+
+	wtLoggerMu.RLock()
+	defer wtLoggerMu.RUnlock()
+	return wtLogger
+}
+
+// SetWebTransportLogger sets the default logger for all WebTransport endpoints.
+// Pass nil to disable logging. This is a package-level setting.
+// Thread-safe for concurrent access.
+func SetWebTransportLogger(logger WebTransportLogger) {
+	// Ensure initialization has happened before we try to modify
+	wtLoggerInitOnce.Do(func() {
+		wtLogger = log.New(os.Stderr, "[gomavlib-webtransport] ", log.LstdFlags|log.Lmicroseconds)
+	})
+
+	wtLoggerMu.Lock()
+	defer wtLoggerMu.Unlock()
+
+	if logger == nil {
+		wtLogger = discardLogger{}
+	} else {
+		wtLogger = logger
+	}
+}
+
+// discardLogger discards all log messages
+type discardLogger struct{}
+
+func (discardLogger) Printf(format string, v ...interface{}) {}
 
 // Default QUIC configuration values
 const (
@@ -90,6 +136,11 @@ type EndpointWebTransport struct {
 
 	// State change callback (optional)
 	OnStateChange ConnectionStateCallback
+
+	// Logger for WebTransport debugging (optional).
+	// If nil, uses the package-level default logger.
+	// Set to a custom logger or use SetWebTransportLogger(nil) to disable logging.
+	Logger WebTransportLogger
 }
 
 func (conf EndpointWebTransport) init(node *Node) (Endpoint, error) {
@@ -147,22 +198,36 @@ type endpointWebTransport struct {
 	terminate chan struct{}
 	mu        sync.Mutex
 
+	// Instance-level logger (never nil after initialization)
+	logger WebTransportLogger
+
 	// Connection state
 	state   ConnectionState
 	session *webtransport.Session
 	dialer  *webtransport.Dialer
 
-	// Reconnection state
-	reconnectAttempts  int32
-	consecutiveErrors  int32
-	currentRetryPeriod time.Duration
-	lastConnectTime    time.Time
+	// Reconnection state - uses common retry infrastructure
+	retryState      *RetryState
+	lastConnectTime time.Time
 }
 
 func (e *endpointWebTransport) initialize() error {
 	e.ctx, e.cancel = context.WithCancel(context.Background())
 	e.terminate = make(chan struct{})
-	e.currentRetryPeriod = e.conf.InitialRetryPeriod
+
+	// Set logger - use config logger, fall back to default
+	if e.conf.Logger != nil {
+		e.logger = e.conf.Logger
+	} else {
+		e.logger = getDefaultWTLogger()
+	}
+
+	e.retryState = NewRetryState(RetryPolicy{
+		InitialRetryPeriod:   e.conf.InitialRetryPeriod,
+		MaxRetryPeriod:       e.conf.MaxRetryPeriod,
+		BackoffMultiplier:    e.conf.BackoffMultiplier,
+		MaxReconnectAttempts: e.conf.MaxReconnectAttempts,
+	})
 	e.setState(ConnStateDisconnected, nil)
 
 	// Create WebTransport dialer
@@ -216,34 +281,34 @@ func (e *endpointWebTransport) provide() (string, io.ReadWriteCloser, error) {
 		default:
 		}
 
-		attempts := atomic.LoadInt32(&e.reconnectAttempts)
-		if attempts > 0 {
+		// Check if we should wait before attempting (uses common retry logic)
+		shouldWait, waitDuration := e.retryState.BeforeAttempt()
+		if shouldWait {
 			e.setState(ConnStateReconnecting, nil)
 
 			select {
-			case <-time.After(e.currentRetryPeriod):
+			case <-time.After(waitDuration):
 			case <-e.terminate:
 				return "", nil, errTerminated
 			}
-
-			nextPeriod := time.Duration(float64(e.currentRetryPeriod) * e.conf.BackoffMultiplier)
-			e.currentRetryPeriod = min(nextPeriod, e.conf.MaxRetryPeriod)
 		} else {
 			e.setState(ConnStateConnecting, nil)
 		}
 
-		atomic.AddInt32(&e.reconnectAttempts, 1)
+		// Record that we're making an attempt
+		e.retryState.RecordAttempt()
+		attempts := e.retryState.ReconnectAttempts()
 
 		// Attempt connection
 		rwc, err := e.connect()
 		if err != nil {
-			consecutiveErrs := atomic.AddInt32(&e.consecutiveErrors, 1)
-			wtLogger.Printf("event=connect_failed url=%s attempt=%d consecutive_errors=%d retry_period_ms=%d error=%v",
-				e.conf.URL, attempts+1, consecutiveErrs, e.currentRetryPeriod.Milliseconds(), err)
+			// Record the error and check if we should continue retrying
+			shouldContinue := e.retryState.RecordError()
+			stats := e.retryState.GetStats()
+			e.logger.Printf("event=connect_failed url=%s attempt=%d consecutive_errors=%v retry_period_ms=%v error=%v",
+				e.conf.URL, attempts, stats["consecutive_errors"], stats["current_retry_period"].(time.Duration).Milliseconds(), err)
 
-			// Check max reconnect attempts
-			if e.conf.MaxReconnectAttempts > 0 &&
-				int(atomic.LoadInt32(&e.reconnectAttempts)) >= e.conf.MaxReconnectAttempts {
+			if !shouldContinue {
 				e.setState(ConnStateDisconnected, err)
 				<-e.terminate
 				return "", nil, errTerminated
@@ -252,16 +317,15 @@ func (e *endpointWebTransport) provide() (string, io.ReadWriteCloser, error) {
 			continue
 		}
 
-		// Connection successful
-		atomic.StoreInt32(&e.consecutiveErrors, 0)
+		// Connection successful - reset error counters
+		e.retryState.RecordSuccess()
 		e.mu.Lock()
-		e.currentRetryPeriod = e.conf.InitialRetryPeriod
 		e.lastConnectTime = time.Now()
 		e.mu.Unlock()
 		e.setState(ConnStateConnected, nil)
 
-		wtLogger.Printf("event=connect_success url=%s attempt=%d use_datagrams=%v",
-			e.conf.URL, attempts+1, e.conf.UseDatagrams)
+		e.logger.Printf("event=connect_success url=%s attempt=%d use_datagrams=%v",
+			e.conf.URL, attempts, e.conf.UseDatagrams)
 
 		label := e.conf.Label
 		if label == "" {
@@ -291,10 +355,11 @@ func (e *endpointWebTransport) connect() (io.ReadWriteCloser, error) {
 
 	if e.conf.UseDatagrams {
 		// Use unreliable datagrams for MAVLink (lower latency)
-		wtLogger.Printf("event=datagram_conn_open url=%s use_datagrams=true", e.conf.URL)
+		e.logger.Printf("event=datagram_conn_open url=%s use_datagrams=true", e.conf.URL)
 		return &webTransportDatagramConn{
 			session:   session,
 			ctx:       e.ctx,
+			logger:    e.logger,
 			startTime: time.Now(),
 		}, nil
 	}
@@ -335,8 +400,8 @@ func (e *endpointWebTransport) GetStats() WebTransportStats {
 
 	return WebTransportStats{
 		State:             e.GetState().String(),
-		ReconnectAttempts: atomic.LoadInt32(&e.reconnectAttempts),
-		ConsecutiveErrors: atomic.LoadInt32(&e.consecutiveErrors),
+		ReconnectAttempts: e.retryState.ReconnectAttempts(),
+		ConsecutiveErrors: e.retryState.ConsecutiveErrors(),
 		LastConnectTime:   lastConnect,
 	}
 }
@@ -345,6 +410,7 @@ func (e *endpointWebTransport) GetStats() WebTransportStats {
 type webTransportDatagramConn struct {
 	session   *webtransport.Session
 	ctx       context.Context
+	logger    WebTransportLogger
 	mu        sync.Mutex
 	closed    bool
 	startTime time.Time
@@ -391,7 +457,7 @@ func (c *webTransportDatagramConn) Read(p []byte) (n int, err error) {
 		if bytesRead > 0 {
 			firstByte = fmt.Sprintf("0x%02x", data[0])
 		}
-		wtLogger.Printf("event=datagram_recv datagram_num=%d bytes=%d first_byte=%s total_read=%d total_bytes=%d",
+		c.logger.Printf("event=datagram_recv datagram_num=%d bytes=%d first_byte=%s total_read=%d total_bytes=%d",
 			readCount, bytesRead, firstByte, readCount, c.bytesRead.Load())
 	}
 
@@ -410,7 +476,7 @@ func (c *webTransportDatagramConn) Write(p []byte) (n int, err error) {
 	if err != nil {
 		c.writeErrors.Add(1)
 		writeCount := c.datagramsWritten.Load()
-		wtLogger.Printf("event=datagram_send_error datagram_num=%d bytes=%d error=%v total_sent=%d total_errors=%d",
+		c.logger.Printf("event=datagram_send_error datagram_num=%d bytes=%d error=%v total_sent=%d total_errors=%d",
 			writeCount+1, len(p), err, writeCount, c.writeErrors.Load())
 		return 0, err
 	}
@@ -424,7 +490,7 @@ func (c *webTransportDatagramConn) Write(p []byte) (n int, err error) {
 		if len(p) > 0 {
 			firstByte = fmt.Sprintf("0x%02x", p[0])
 		}
-		wtLogger.Printf("event=datagram_send datagram_num=%d bytes=%d first_byte=%s total_sent=%d total_bytes=%d",
+		c.logger.Printf("event=datagram_send datagram_num=%d bytes=%d first_byte=%s total_sent=%d total_bytes=%d",
 			writeCount, len(p), firstByte, writeCount, c.bytesWritten.Load())
 	}
 
@@ -442,7 +508,7 @@ func (c *webTransportDatagramConn) Close() error {
 
 	// Wide event: Log connection lifecycle summary
 	duration := time.Since(c.startTime)
-	wtLogger.Printf("event=datagram_conn_close duration_ms=%d datagrams_read=%d datagrams_written=%d bytes_read=%d bytes_written=%d read_errors=%d write_errors=%d",
+	c.logger.Printf("event=datagram_conn_close duration_ms=%d datagrams_read=%d datagrams_written=%d bytes_read=%d bytes_written=%d read_errors=%d write_errors=%d",
 		duration.Milliseconds(),
 		c.datagramsRead.Load(),
 		c.datagramsWritten.Load(),

@@ -102,10 +102,8 @@ func TestWebSocketEndpoint_CircuitBreakerOpen(t *testing.T) {
 	// Wait for circuit breaker to open (3 consecutive errors)
 	time.Sleep(500 * time.Millisecond)
 
-	// Verify circuit breaker is open
-	e.mu.Lock()
-	isOpen := e.isCircuitBreakerOpen()
-	e.mu.Unlock()
+	// Verify circuit breaker is open (now tracked in retryState)
+	isOpen := e.retryState.IsCircuitBreakerOpen()
 	require.True(t, isOpen, "circuit breaker should be open after consecutive errors")
 
 	// Close the endpoint
@@ -295,10 +293,8 @@ func TestWebSocketEndpoint_OnlyReturnsErrTerminated(t *testing.T) {
 		{
 			name: "Circuit Breaker Open",
 			setupFunc: func(e *endpointWebSocket) {
-				// Force circuit breaker to open
-				e.mu.Lock()
-				e.circuitBreakerOpenAt = time.Now()
-				e.mu.Unlock()
+				// Force circuit breaker to open (now managed by retryState)
+				e.retryState.OpenCircuitBreaker()
 			},
 		},
 	}

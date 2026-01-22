@@ -166,19 +166,23 @@ type endpointWebSocket struct {
 	// State management
 	state WebSocketState
 
-	// Reconnection state
-	reconnectAttempts    int32
-	consecutiveErrors    int32
-	currentRetryPeriod   time.Duration
-	lastConnectTime      time.Time
-	lastErrorTime        time.Time
-	circuitBreakerOpenAt time.Time
+	// Reconnection state - uses common retry infrastructure with integrated circuit breaker
+	retryState      *RetryState
+	lastConnectTime time.Time
+	lastErrorTime   time.Time
 }
 
 func (e *endpointWebSocket) initialize() error {
 	e.ctx, e.cancel = context.WithCancel(context.Background())
 	e.terminate = make(chan struct{})
-	e.currentRetryPeriod = e.conf.InitialRetryPeriod
+	e.retryState = NewRetryState(RetryPolicy{
+		InitialRetryPeriod:    e.conf.InitialRetryPeriod,
+		MaxRetryPeriod:        e.conf.MaxRetryPeriod,
+		BackoffMultiplier:     e.conf.BackoffMultiplier,
+		MaxReconnectAttempts:  e.conf.MaxReconnectAttempts,
+		MaxConsecutiveErrors:  e.conf.MaxConsecutiveErrors,
+		CircuitBreakerTimeout: e.conf.CircuitBreakerTimeout,
+	})
 	e.setState(WSStateDisconnected, nil)
 	return nil
 }
@@ -212,21 +216,24 @@ func (e *endpointWebSocket) setState(newState WebSocketState, err error) {
 	}
 }
 
-func (e *endpointWebSocket) isCircuitBreakerOpen() bool {
-	if e.circuitBreakerOpenAt.IsZero() {
-		return false
-	}
-	return time.Since(e.circuitBreakerOpenAt) < e.conf.CircuitBreakerTimeout
-}
+// Circuit breaker methods delegate to RetryState for consolidated retry logic
 
-func (e *endpointWebSocket) openCircuitBreaker() {
-	e.circuitBreakerOpenAt = time.Now()
-}
-
-func (e *endpointWebSocket) closeCircuitBreaker() {
-	e.circuitBreakerOpenAt = time.Time{}
-}
-
+// categorizeError determines the error category for retry decisions.
+//
+// Error categorization strategy:
+//  1. Type assertions (preferred): errors.As for net.Error, websocket.IsCloseError
+//  2. String matching (fallback): For errors without typed wrappers
+//
+// String matching rationale:
+// - Many HTTP/WebSocket errors wrap underlying errors as strings
+// - HTTP status codes (401, 403) appear in error messages but not as typed errors
+// - This is a pragmatic fallback when proper error types aren't available
+// - Case-insensitive matching handles varying error message formats
+//
+// Known limitations:
+// - String matching is locale-independent but message-dependent
+// - Error message changes could affect categorization
+// - We prioritize type assertions where possible to minimize string matching
 func (e *endpointWebSocket) categorizeError(err error) WebSocketErrorCategory {
 	if err == nil {
 		return ErrorCategoryUnknown
@@ -234,7 +241,7 @@ func (e *endpointWebSocket) categorizeError(err error) WebSocketErrorCategory {
 
 	errStr := err.Error()
 
-	// Network errors
+	// Network errors - prefer type assertion
 	var netErr net.Error
 	if errors.As(err, &netErr) {
 		if netErr.Timeout() {
@@ -243,7 +250,7 @@ func (e *endpointWebSocket) categorizeError(err error) WebSocketErrorCategory {
 		return ErrorCategoryNetwork
 	}
 
-	// WebSocket close errors
+	// WebSocket close errors - use library's typed check
 	if websocket.IsCloseError(err,
 		websocket.CloseNormalClosure,
 		websocket.CloseGoingAway,
@@ -252,7 +259,11 @@ func (e *endpointWebSocket) categorizeError(err error) WebSocketErrorCategory {
 		return ErrorCategoryNetwork
 	}
 
-	// Authentication errors
+	// --- String matching fallback for untyped errors ---
+	// Note: These checks are necessary because HTTP errors from the WebSocket
+	// handshake don't expose typed status codes in the error interface.
+
+	// Authentication errors (HTTP 401/403)
 	if strings.Contains(errStr, "401") || strings.Contains(errStr, "403") ||
 		strings.Contains(errStr, "unauthorized") || strings.Contains(errStr, "forbidden") {
 		return ErrorCategoryAuth
@@ -263,7 +274,7 @@ func (e *endpointWebSocket) categorizeError(err error) WebSocketErrorCategory {
 		return ErrorCategoryProtocol
 	}
 
-	// Timeout errors
+	// Timeout errors (backup for non-net.Error timeouts)
 	if strings.Contains(errStr, "timeout") || strings.Contains(errStr, "deadline") {
 		return ErrorCategoryTimeout
 	}
@@ -271,33 +282,22 @@ func (e *endpointWebSocket) categorizeError(err error) WebSocketErrorCategory {
 	return ErrorCategoryUnknown
 }
 
-func (e *endpointWebSocket) shouldRetry(err error) (bool, time.Duration) {
+// shouldRetryError checks if an error is retryable based on its category.
+// Circuit breaker and max attempts are handled by RetryState.RecordError().
+func (e *endpointWebSocket) shouldRetryError(err error) bool {
 	category := e.categorizeError(err)
 
-	// Don't retry auth errors
+	// Don't retry auth errors - these require user intervention
 	if category == ErrorCategoryAuth {
-		return false, 0
+		return false
 	}
 
-	// Check circuit breaker
-	if e.isCircuitBreakerOpen() {
-		return false, e.conf.CircuitBreakerTimeout - time.Since(e.circuitBreakerOpenAt)
+	// Check if circuit breaker is open (managed by RetryState)
+	if e.retryState.IsCircuitBreakerOpen() {
+		return false
 	}
 
-	// Check consecutive errors
-	consecutiveErrors := atomic.LoadInt32(&e.consecutiveErrors)
-	if int(consecutiveErrors) >= e.conf.MaxConsecutiveErrors {
-		e.openCircuitBreaker()
-		return false, e.conf.CircuitBreakerTimeout
-	}
-
-	// Check max reconnect attempts
-	attempts := atomic.LoadInt32(&e.reconnectAttempts)
-	if e.conf.MaxReconnectAttempts > 0 && int(attempts) >= e.conf.MaxReconnectAttempts {
-		return false, 0
-	}
-
-	return true, e.currentRetryPeriod
+	return true
 }
 
 func (e *endpointWebSocket) provide() (string, io.ReadWriteCloser, error) {
@@ -308,50 +308,52 @@ func (e *endpointWebSocket) provide() (string, io.ReadWriteCloser, error) {
 		default:
 		}
 
-		// Check if we should attempt connection
-		attempts := atomic.LoadInt32(&e.reconnectAttempts)
-		if attempts > 0 {
+		// Check if we should wait before attempting (uses common retry logic)
+		shouldWait, waitDuration := e.retryState.BeforeAttempt()
+		if shouldWait {
 			e.setState(WSStateReconnecting, nil)
 
 			// Wait for backoff period
 			select {
-			case <-time.After(e.currentRetryPeriod):
+			case <-time.After(waitDuration):
 			case <-e.terminate:
 				return "", nil, errTerminated
 			}
-
-			// Increase backoff period
-			nextPeriod := time.Duration(float64(e.currentRetryPeriod) * e.conf.BackoffMultiplier)
-			e.currentRetryPeriod = min(nextPeriod, e.conf.MaxRetryPeriod)
 		} else {
 			e.setState(WSStateConnecting, nil)
 		}
 
-		atomic.AddInt32(&e.reconnectAttempts, 1)
+		// Record that we're making an attempt
+		e.retryState.RecordAttempt()
 
 		// Attempt connection
 		conn, err := e.connect()
 		if err != nil {
 			e.lastErrorTime = time.Now()
-			atomic.AddInt32(&e.consecutiveErrors, 1)
 
-			shouldRetry, retryAfter := e.shouldRetry(err)
-			if !shouldRetry {
+			// Record the error and check if we should continue retrying
+			// Check if error is retryable (auth errors are not)
+			if !e.shouldRetryError(err) {
+				e.setState(WSStateDisconnected, err)
+				<-e.terminate
+				return "", nil, errTerminated
+			}
+
+			// Record the error - this handles circuit breaker and max attempts
+			shouldContinue := e.retryState.RecordError()
+			if !shouldContinue {
 				e.setState(WSStateDisconnected, err)
 				// Wait for termination - don't return error as gomavlib only expects errTerminated
 				<-e.terminate
 				return "", nil, errTerminated
 			}
 
-			e.currentRetryPeriod = retryAfter
 			continue // Retry with backoff
 		}
 
-		// Connection successful - reset error counters
-		atomic.StoreInt32(&e.consecutiveErrors, 0)
-		e.currentRetryPeriod = e.conf.InitialRetryPeriod
+		// Connection successful - reset error counters (also closes circuit breaker)
+		e.retryState.RecordSuccess()
 		e.lastConnectTime = time.Now()
-		e.closeCircuitBreaker()
 		e.setState(WSStateConnected, nil)
 
 		// Create durable adapter
@@ -414,16 +416,13 @@ func (e *endpointWebSocket) IsHealthy() bool {
 }
 
 // GetStats returns connection statistics
-func (e *endpointWebSocket) GetStats() map[string]interface{} {
-	return map[string]interface{}{
-		"state":                e.GetState().String(),
-		"reconnect_attempts":   atomic.LoadInt32(&e.reconnectAttempts),
-		"consecutive_errors":   atomic.LoadInt32(&e.consecutiveErrors),
-		"last_connect_time":    e.lastConnectTime,
-		"last_error_time":      e.lastErrorTime,
-		"circuit_breaker_open": e.isCircuitBreakerOpen(),
-		"current_retry_period": e.currentRetryPeriod,
-	}
+func (e *endpointWebSocket) GetStats() map[string]any {
+	stats := e.retryState.GetStats()
+	stats["state"] = e.GetState().String()
+	stats["last_connect_time"] = e.lastConnectTime
+	stats["last_error_time"] = e.lastErrorTime
+	// circuit_breaker_open is already included from retryState.GetStats()
+	return stats
 }
 
 // webSocketConn adapts a gorilla/websocket.Conn to io.ReadWriteCloser with durability features
@@ -447,7 +446,25 @@ type webSocketConn struct {
 func (w *webSocketConn) reader() {
 	defer close(w.readCh)
 
-	// Set pong handler
+	// Set ping handler - respond to server pings with pongs
+	// The default handler can fail silently, so we add explicit handling
+	w.conn.SetPingHandler(func(message string) error {
+		w.mu.Lock()
+		defer w.mu.Unlock()
+		if w.closed {
+			return nil
+		}
+		// Send pong response with adequate timeout
+		err := w.conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(10*time.Second))
+		if err != nil {
+			// Log would be nice but we don't have logger here
+			// The connection will be closed by the caller if write fails
+			return err
+		}
+		return nil
+	})
+
+	// Set pong handler - handle responses to our pings
 	w.conn.SetReadDeadline(time.Now().Add(w.pongWait))
 	w.conn.SetPongHandler(func(string) error {
 		w.conn.SetReadDeadline(time.Now().Add(w.pongWait))
