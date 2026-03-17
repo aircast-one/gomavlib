@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	bufferSize = 512 // frames cannot go beyond len(header) + 255 + len(check) + len(sig)
+	bufferSize = 4096 // sized to absorb serial burst traffic; max frame is ~280 bytes
 )
 
 // 1st January 2015 GMT
