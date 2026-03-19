@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -712,6 +713,126 @@ func TestWebSocketEndpoint_ReadWriteOperations(t *testing.T) {
 
 	e.close()
 	<-done
+}
+
+// TestWebSocketEndpoint_HeaderProvider tests dynamic headers via HeaderProvider callback
+func TestWebSocketEndpoint_HeaderProvider(t *testing.T) {
+	var mu sync.Mutex
+	receivedTokens := []string{}
+
+	// Create a server that rejects the first token (401) and accepts the second
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		mu.Lock()
+		receivedTokens = append(receivedTokens, auth)
+		mu.Unlock()
+
+		if auth != "Bearer fresh-token" {
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte("Unauthorized"))
+			return
+		}
+
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		time.Sleep(500 * time.Millisecond)
+	}))
+	defer server.Close()
+
+	wsURL := "ws" + server.URL[4:]
+
+	// Simulate token refresh: first call returns expired token, subsequent calls return fresh token
+	callCount := int32(0)
+	endpoint := EndpointWebSocket{
+		URL: wsURL,
+		HeaderProvider: func() map[string]string {
+			count := atomic.AddInt32(&callCount, 1)
+			if count == 1 {
+				return map[string]string{"Authorization": "Bearer expired-token"}
+			}
+			return map[string]string{"Authorization": "Bearer fresh-token"}
+		},
+		InitialRetryPeriod:   100 * time.Millisecond,
+		MaxRetryPeriod:       500 * time.Millisecond,
+		BackoffMultiplier:    1.5,
+		MaxReconnectAttempts: 0,
+		HandshakeTimeout:     1 * time.Second,
+		PingPeriod:           5 * time.Second,
+		PongWait:             10 * time.Second,
+	}
+
+	conf, err := endpoint.init(nil)
+	require.NoError(t, err)
+	e := conf.(*endpointWebSocket)
+
+	// Start connection
+	provideDone := make(chan struct{})
+	go func() {
+		defer close(provideDone)
+		e.provide()
+	}()
+
+	// Wait for reconnection with fresh token
+	time.Sleep(800 * time.Millisecond)
+
+	// Verify endpoint connected after token refresh
+	require.Equal(t, WSStateConnected, e.GetState(), "should connect after HeaderProvider returns fresh token")
+
+	// Verify provider was called multiple times (expired token first, then fresh)
+	mu.Lock()
+	tokens := make([]string, len(receivedTokens))
+	copy(tokens, receivedTokens)
+	mu.Unlock()
+	require.GreaterOrEqual(t, len(tokens), 2, "HeaderProvider should have been called at least twice")
+	require.Equal(t, "Bearer expired-token", tokens[0], "first attempt should use expired token")
+	require.Equal(t, "Bearer fresh-token", tokens[1], "second attempt should use fresh token")
+
+	e.close()
+	<-provideDone
+}
+
+// TestWebSocketEndpoint_ShouldRetryError_WithHeaderProvider tests that auth errors
+// are retryable when HeaderProvider is set, but not when only static Headers are used
+func TestWebSocketEndpoint_ShouldRetryError_WithHeaderProvider(t *testing.T) {
+	// Without HeaderProvider: auth errors are NOT retryable
+	endpointNoProvider := EndpointWebSocket{
+		URL: "ws://localhost:8080/test",
+		Headers: map[string]string{
+			"Authorization": "Bearer static-token",
+		},
+	}
+	confNo, err := endpointNoProvider.init(nil)
+	require.NoError(t, err)
+	eNoProvider := confNo.(*endpointWebSocket)
+	defer eNoProvider.close()
+
+	authErr := errors.New("failed to connect to WebSocket: 401 Unauthorized")
+	require.False(t, eNoProvider.shouldRetryError(authErr),
+		"auth errors should NOT be retryable without HeaderProvider")
+
+	// With HeaderProvider: auth errors ARE retryable
+	endpointWithProvider := EndpointWebSocket{
+		URL: "ws://localhost:8080/test",
+		HeaderProvider: func() map[string]string {
+			return map[string]string{"Authorization": "Bearer fresh-token"}
+		},
+	}
+	confWith, err := endpointWithProvider.init(nil)
+	require.NoError(t, err)
+	eWithProvider := confWith.(*endpointWebSocket)
+	defer eWithProvider.close()
+
+	require.True(t, eWithProvider.shouldRetryError(authErr),
+		"auth errors should be retryable with HeaderProvider")
+
+	// Non-auth errors are retryable regardless
+	networkErr := errors.New("connection refused")
+	require.True(t, eNoProvider.shouldRetryError(networkErr))
+	require.True(t, eWithProvider.shouldRetryError(networkErr))
 }
 
 // TestWebSocketEndpoint_HeadersSupport tests custom headers

@@ -84,8 +84,15 @@ type EndpointWebSocket struct {
 	// WebSocket URL to connect to (e.g., "ws://localhost:8080/mavlink")
 	URL string
 
-	// Optional HTTP headers to send during WebSocket handshake
+	// Optional HTTP headers to send during WebSocket handshake.
+	// For static headers that don't change between reconnections.
 	Headers map[string]string
+
+	// Optional callback that provides headers dynamically on each connection attempt.
+	// When set, this is called instead of using the static Headers map.
+	// This is useful for authentication tokens that may expire and need refreshing
+	// between reconnection attempts.
+	HeaderProvider func() map[string]string
 
 	// Optional label for logging (defaults to "websocket")
 	Label string
@@ -287,9 +294,11 @@ func (e *endpointWebSocket) categorizeError(err error) WebSocketErrorCategory {
 func (e *endpointWebSocket) shouldRetryError(err error) bool {
 	category := e.categorizeError(err)
 
-	// Don't retry auth errors - these require user intervention
+	// Auth errors are retryable only when a HeaderProvider is set,
+	// because the provider may return fresh tokens on the next attempt.
+	// Without a provider, auth errors require user intervention.
 	if category == ErrorCategoryAuth {
-		return false
+		return e.conf.HeaderProvider != nil
 	}
 
 	// Check if circuit breaker is open (managed by RetryState)
@@ -388,8 +397,17 @@ func (e *endpointWebSocket) connect() (*websocket.Conn, error) {
 		NetDialContext:   e.conf.NetDialContext,
 	}
 
+	// Use HeaderProvider for dynamic headers (e.g., refreshed auth tokens),
+	// falling back to static Headers map.
+	var sourceHeaders map[string]string
+	if e.conf.HeaderProvider != nil {
+		sourceHeaders = e.conf.HeaderProvider()
+	} else {
+		sourceHeaders = e.conf.Headers
+	}
+
 	headers := make(map[string][]string)
-	for k, v := range e.conf.Headers {
+	for k, v := range sourceHeaders {
 		headers[k] = []string{v}
 	}
 

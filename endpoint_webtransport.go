@@ -107,8 +107,15 @@ type EndpointWebTransport struct {
 	// WebTransport URL to connect to (must be https://)
 	URL string
 
-	// Optional HTTP headers for the WebTransport handshake
+	// Optional HTTP headers for the WebTransport handshake.
+	// For static headers that don't change between reconnections.
 	Headers map[string]string
+
+	// Optional callback that provides headers dynamically on each connection attempt.
+	// When set, this is called instead of using the static Headers map.
+	// This is useful for authentication tokens that may expire and need refreshing
+	// between reconnection attempts.
+	HeaderProvider func() map[string]string
 
 	// Optional label for logging (defaults to "webtransport")
 	Label string
@@ -337,9 +344,17 @@ func (e *endpointWebTransport) provide() (string, io.ReadWriteCloser, error) {
 }
 
 func (e *endpointWebTransport) connect() (io.ReadWriteCloser, error) {
-	// Build request headers
+	// Use HeaderProvider for dynamic headers (e.g., refreshed auth tokens),
+	// falling back to static Headers map.
+	var sourceHeaders map[string]string
+	if e.conf.HeaderProvider != nil {
+		sourceHeaders = e.conf.HeaderProvider()
+	} else {
+		sourceHeaders = e.conf.Headers
+	}
+
 	header := http.Header{}
-	for k, v := range e.conf.Headers {
+	for k, v := range sourceHeaders {
 		header.Set(k, v)
 	}
 
