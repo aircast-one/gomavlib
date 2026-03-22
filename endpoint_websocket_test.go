@@ -749,12 +749,12 @@ func TestWebSocketEndpoint_HeaderProvider(t *testing.T) {
 	callCount := int32(0)
 	endpoint := EndpointWebSocket{
 		URL: wsURL,
-		HeaderProvider: func() map[string]string {
+		HeaderProvider: func() (map[string]string, error) {
 			count := atomic.AddInt32(&callCount, 1)
 			if count == 1 {
-				return map[string]string{"Authorization": "Bearer expired-token"}
+				return map[string]string{"Authorization": "Bearer expired-token"}, nil
 			}
-			return map[string]string{"Authorization": "Bearer fresh-token"}
+			return map[string]string{"Authorization": "Bearer fresh-token"}, nil
 		},
 		InitialRetryPeriod:   100 * time.Millisecond,
 		MaxRetryPeriod:       500 * time.Millisecond,
@@ -817,8 +817,8 @@ func TestWebSocketEndpoint_ShouldRetryError_WithHeaderProvider(t *testing.T) {
 	// With HeaderProvider: auth errors ARE retryable
 	endpointWithProvider := EndpointWebSocket{
 		URL: "ws://localhost:8080/test",
-		HeaderProvider: func() map[string]string {
-			return map[string]string{"Authorization": "Bearer fresh-token"}
+		HeaderProvider: func() (map[string]string, error) {
+			return map[string]string{"Authorization": "Bearer fresh-token"}, nil
 		},
 	}
 	confWith, err := endpointWithProvider.init(nil)
@@ -833,6 +833,74 @@ func TestWebSocketEndpoint_ShouldRetryError_WithHeaderProvider(t *testing.T) {
 	networkErr := errors.New("connection refused")
 	require.True(t, eNoProvider.shouldRetryError(networkErr))
 	require.True(t, eWithProvider.shouldRetryError(networkErr))
+}
+
+// TestWebSocketEndpoint_HeaderProviderError tests that when HeaderProvider returns
+// an error, the connection attempt is skipped (no HTTP request) and counted as a failure.
+func TestWebSocketEndpoint_HeaderProviderError(t *testing.T) {
+	requestCount := int32(0)
+
+	// Create a server that counts requests
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		time.Sleep(500 * time.Millisecond)
+	}))
+	defer server.Close()
+
+	wsURL := "ws" + server.URL[4:]
+
+	// HeaderProvider that always returns an error (simulates token unavailable)
+	callCount := int32(0)
+	endpoint := EndpointWebSocket{
+		URL: wsURL,
+		HeaderProvider: func() (map[string]string, error) {
+			atomic.AddInt32(&callCount, 1)
+			return nil, errors.New("failed to refresh expired token: refresh token revoked")
+		},
+		InitialRetryPeriod:   50 * time.Millisecond,
+		MaxRetryPeriod:       100 * time.Millisecond,
+		BackoffMultiplier:    1.5,
+		MaxReconnectAttempts: 0,
+		HandshakeTimeout:     1 * time.Second,
+		PingPeriod:           5 * time.Second,
+		PongWait:             10 * time.Second,
+		MaxConsecutiveErrors:  5,
+		CircuitBreakerTimeout: 1 * time.Second,
+	}
+
+	conf, err := endpoint.init(nil)
+	require.NoError(t, err)
+	e := conf.(*endpointWebSocket)
+
+	// Start connection in goroutine
+	provideDone := make(chan struct{})
+	go func() {
+		defer close(provideDone)
+		e.provide()
+	}()
+
+	// Wait for several retry cycles
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify: HeaderProvider was called but NO actual HTTP requests were made
+	calls := atomic.LoadInt32(&callCount)
+	requests := atomic.LoadInt32(&requestCount)
+
+	require.Greater(t, calls, int32(0), "HeaderProvider should have been called")
+	require.Equal(t, int32(0), requests, "no HTTP requests should have been made when HeaderProvider returns error")
+
+	// Verify the error is categorized as auth (for circuit breaker)
+	headerErr := errors.New("header provider failed: auth token unavailable")
+	require.Equal(t, ErrorCategoryAuth, e.categorizeError(headerErr))
+
+	e.close()
+	<-provideDone
 }
 
 // TestWebSocketEndpoint_HeadersSupport tests custom headers

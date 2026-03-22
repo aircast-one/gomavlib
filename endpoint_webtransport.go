@@ -115,7 +115,11 @@ type EndpointWebTransport struct {
 	// When set, this is called instead of using the static Headers map.
 	// This is useful for authentication tokens that may expire and need refreshing
 	// between reconnection attempts.
-	HeaderProvider func() map[string]string
+	//
+	// If the provider returns a non-nil error, the connection attempt is skipped
+	// entirely (no HTTP request is made) and the error is counted as a failure
+	// for the circuit breaker.
+	HeaderProvider func() (map[string]string, error)
 
 	// Optional label for logging (defaults to "webtransport")
 	Label string
@@ -348,7 +352,11 @@ func (e *endpointWebTransport) connect() (io.ReadWriteCloser, error) {
 	// falling back to static Headers map.
 	var sourceHeaders map[string]string
 	if e.conf.HeaderProvider != nil {
-		sourceHeaders = e.conf.HeaderProvider()
+		var err error
+		sourceHeaders, err = e.conf.HeaderProvider()
+		if err != nil {
+			return nil, fmt.Errorf("header provider failed: %w", err)
+		}
 	} else {
 		sourceHeaders = e.conf.Headers
 	}

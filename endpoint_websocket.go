@@ -92,7 +92,12 @@ type EndpointWebSocket struct {
 	// When set, this is called instead of using the static Headers map.
 	// This is useful for authentication tokens that may expire and need refreshing
 	// between reconnection attempts.
-	HeaderProvider func() map[string]string
+	//
+	// If the provider returns a non-nil error, the connection attempt is skipped
+	// entirely (no HTTP request is made) and the error is counted as a failure
+	// for the circuit breaker. This prevents sending unauthenticated requests
+	// when the token cannot be obtained.
+	HeaderProvider func() (map[string]string, error)
 
 	// Optional label for logging (defaults to "websocket")
 	Label string
@@ -270,9 +275,10 @@ func (e *endpointWebSocket) categorizeError(err error) WebSocketErrorCategory {
 	// Note: These checks are necessary because HTTP errors from the WebSocket
 	// handshake don't expose typed status codes in the error interface.
 
-	// Authentication errors (HTTP 401/403)
+	// Authentication errors (HTTP 401/403 or header provider failure)
 	if strings.Contains(errStr, "401") || strings.Contains(errStr, "403") ||
-		strings.Contains(errStr, "unauthorized") || strings.Contains(errStr, "forbidden") {
+		strings.Contains(errStr, "unauthorized") || strings.Contains(errStr, "forbidden") ||
+		strings.Contains(errStr, "header provider failed") {
 		return ErrorCategoryAuth
 	}
 
@@ -401,7 +407,11 @@ func (e *endpointWebSocket) connect() (*websocket.Conn, error) {
 	// falling back to static Headers map.
 	var sourceHeaders map[string]string
 	if e.conf.HeaderProvider != nil {
-		sourceHeaders = e.conf.HeaderProvider()
+		var err error
+		sourceHeaders, err = e.conf.HeaderProvider()
+		if err != nil {
+			return nil, fmt.Errorf("header provider failed: %w", err)
+		}
 	} else {
 		sourceHeaders = e.conf.Headers
 	}
