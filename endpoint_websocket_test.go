@@ -951,3 +951,100 @@ func TestWebSocketEndpoint_HeadersSupport(t *testing.T) {
 	// Verify custom header was sent
 	require.Equal(t, "Bearer test-token-123", receivedAuth)
 }
+
+// TestWebSocketEndpoint_PongNotBlockedBySlowWrite verifies that pong responses
+// are sent even when Write() is blocked on a slow network. This is the regression
+// test for the mutex deadlock where Write() held w.mu while blocked on
+// WriteMessage, preventing the ping handler (which also needed w.mu) from
+// sending pong responses, causing the server to close the connection.
+func TestWebSocketEndpoint_PongNotBlockedBySlowWrite(t *testing.T) {
+	var pongCount atomic.Int32
+
+	// Create a WebSocket server that sends pings and tracks pong responses
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		// Track pongs received from the client
+		conn.SetPongHandler(func(appData string) error {
+			pongCount.Add(1)
+			return nil
+		})
+
+		// Send pings every 100ms to test pong responsiveness
+		go func() {
+			for i := 0; i < 10; i++ {
+				time.Sleep(100 * time.Millisecond)
+				if err := conn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(time.Second)); err != nil {
+					return
+				}
+			}
+		}()
+
+		// Read loop to keep the connection alive and process pong handlers
+		for {
+			_, _, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+		}
+	}))
+	defer server.Close()
+
+	wsURL := "ws" + server.URL[4:]
+
+	endpoint := EndpointWebSocket{
+		URL:                  wsURL,
+		InitialRetryPeriod:   100 * time.Millisecond,
+		MaxRetryPeriod:       1 * time.Second,
+		BackoffMultiplier:    2.0,
+		MaxReconnectAttempts: 0,
+		HandshakeTimeout:     1 * time.Second,
+		PingPeriod:           5 * time.Second, // Long period — we only care about server pings
+		PongWait:             10 * time.Second,
+	}
+
+	conf, err := endpoint.init(nil)
+	require.NoError(t, err)
+	e := conf.(*endpointWebSocket)
+
+	// Start connection
+	done := make(chan struct{})
+	var rwc io.ReadWriteCloser
+	go func() {
+		defer close(done)
+		_, rwc, _ = e.provide()
+	}()
+
+	// Wait for connection
+	time.Sleep(200 * time.Millisecond)
+
+	// Simulate slow writes: flood the write path so it's frequently holding writeMu
+	if rwc != nil {
+		writesDone := make(chan struct{})
+		go func() {
+			defer close(writesDone)
+			for i := 0; i < 50; i++ {
+				_, _ = rwc.Write([]byte("MAVLink frame data padding to simulate real traffic"))
+				time.Sleep(20 * time.Millisecond)
+			}
+		}()
+
+		// Wait for pings to be sent and responded to
+		time.Sleep(1500 * time.Millisecond)
+		<-writesDone
+	}
+
+	e.close()
+	<-done
+
+	// Server sent 10 pings over ~1 second. Even with concurrent writes,
+	// the client must respond to most of them since pong no longer blocks on writeMu.
+	received := pongCount.Load()
+	require.GreaterOrEqual(t, received, int32(5),
+		"expected at least 5 pongs (got %d) — pong handler should not be blocked by writes", received)
+}
