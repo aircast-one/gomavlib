@@ -453,12 +453,12 @@ func (e *endpointWebSocket) GetStats() map[string]any {
 	return stats
 }
 
-// writeDeadline is the maximum time a data frame write can block before timing out.
+// wsWriteDeadline is the maximum time a data frame write can block before timing out.
 // This prevents Write() from holding writeMu indefinitely on slow 4G networks,
 // which would block the ping handler from sending pong responses (since the ping
 // handler runs on the reader goroutine inside ReadMessage and previously needed
 // the same mutex).
-const writeDeadline = 15 * time.Second
+const wsWriteDeadline = 15 * time.Second
 
 // webSocketConn adapts a gorilla/websocket.Conn to io.ReadWriteCloser with durability features.
 //
@@ -482,6 +482,7 @@ type webSocketConn struct {
 	bytesWritten    int64
 	messagesRead    int64
 	messagesWritten int64
+	messagesDropped int64
 }
 
 // reader continuously reads from WebSocket and forwards to readCh
@@ -535,7 +536,7 @@ func (w *webSocketConn) reader() {
 		case <-w.ctx.Done():
 			return
 		default:
-			// Drop if buffer is full
+			atomic.AddInt64(&w.messagesDropped, 1)
 		}
 	}
 }
@@ -591,7 +592,7 @@ func (w *webSocketConn) Write(p []byte) (n int, err error) {
 	// Without this, a blocked WriteMessage holds writeMu forever. While writeMu no
 	// longer blocks pong responses (control frames bypass it), a stuck write still
 	// wastes resources and delays reconnection.
-	if err := w.conn.SetWriteDeadline(time.Now().Add(writeDeadline)); err != nil {
+	if err := w.conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline)); err != nil {
 		return 0, err
 	}
 
@@ -633,5 +634,6 @@ func (w *webSocketConn) GetStats() map[string]interface{} {
 		"bytes_written":    atomic.LoadInt64(&w.bytesWritten),
 		"messages_read":    atomic.LoadInt64(&w.messagesRead),
 		"messages_written": atomic.LoadInt64(&w.messagesWritten),
+		"messages_dropped": atomic.LoadInt64(&w.messagesDropped),
 	}
 }
