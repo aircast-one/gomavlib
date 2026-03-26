@@ -453,15 +453,29 @@ func (e *endpointWebSocket) GetStats() map[string]any {
 	return stats
 }
 
-// webSocketConn adapts a gorilla/websocket.Conn to io.ReadWriteCloser with durability features
+// writeDeadline is the maximum time a data frame write can block before timing out.
+// This prevents Write() from holding writeMu indefinitely on slow 4G networks,
+// which would block the ping handler from sending pong responses (since the ping
+// handler runs on the reader goroutine inside ReadMessage and previously needed
+// the same mutex).
+const writeDeadline = 15 * time.Second
+
+// webSocketConn adapts a gorilla/websocket.Conn to io.ReadWriteCloser with durability features.
+//
+// Concurrency model:
+//   - writeMu serializes data frame writes (WriteMessage) only
+//   - Control frames (ping/pong/close) use WriteControl which is goroutine-safe
+//     in gorilla/websocket without external synchronization
+//   - closed is atomic to allow lock-free checks from the ping handler
+//     (which runs on the reader goroutine and must never block on writeMu)
 type webSocketConn struct {
 	conn       *websocket.Conn
 	ctx        context.Context
 	readCh     chan []byte
 	pingPeriod time.Duration
 	pongWait   time.Duration
-	mu         sync.Mutex
-	closed     bool
+	writeMu    sync.Mutex // serializes data frame WriteMessage calls only
+	closed     atomic.Bool
 
 	// Statistics
 	bytesRead       int64
@@ -474,22 +488,17 @@ type webSocketConn struct {
 func (w *webSocketConn) reader() {
 	defer close(w.readCh)
 
-	// Set ping handler - respond to server pings with pongs
-	// The default handler can fail silently, so we add explicit handling
+	// Set ping handler - respond to server pings with pongs.
+	// WriteControl is goroutine-safe in gorilla/websocket, so no external mutex
+	// is needed. This is critical: the ping handler runs inside ReadMessage() on
+	// the reader goroutine. If it blocked on writeMu (held by a slow Write()),
+	// the reader would freeze and no pongs would be sent, causing the server to
+	// close the connection after its pongWait timeout.
 	w.conn.SetPingHandler(func(message string) error {
-		w.mu.Lock()
-		defer w.mu.Unlock()
-		if w.closed {
+		if w.closed.Load() {
 			return nil
 		}
-		// Send pong response with adequate timeout
-		err := w.conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(10*time.Second))
-		if err != nil {
-			// Log would be nice but we don't have logger here
-			// The connection will be closed by the caller if write fails
-			return err
-		}
-		return nil
+		return w.conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(10*time.Second))
 	})
 
 	// Set pong handler - handle responses to our pings
@@ -531,7 +540,8 @@ func (w *webSocketConn) reader() {
 	}
 }
 
-// pinger sends ping messages periodically
+// pinger sends ping messages periodically.
+// WriteControl is goroutine-safe, so no external mutex is needed.
 func (w *webSocketConn) pinger() {
 	ticker := time.NewTicker(w.pingPeriod)
 	defer ticker.Stop()
@@ -539,14 +549,10 @@ func (w *webSocketConn) pinger() {
 	for {
 		select {
 		case <-ticker.C:
-			w.mu.Lock()
-			if w.closed {
-				w.mu.Unlock()
+			if w.closed.Load() {
 				return
 			}
 			err := w.conn.WriteControl(websocket.PingMessage, []byte{}, time.Now().Add(10*time.Second))
-			w.mu.Unlock()
-
 			if err != nil {
 				// Ping failed - connection is dead
 				return
@@ -570,11 +576,23 @@ func (w *webSocketConn) Read(p []byte) (n int, err error) {
 }
 
 func (w *webSocketConn) Write(p []byte) (n int, err error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if w.closed {
+	if w.closed.Load() {
 		return 0, io.ErrClosedPipe
+	}
+
+	w.writeMu.Lock()
+	defer w.writeMu.Unlock()
+
+	if w.closed.Load() {
+		return 0, io.ErrClosedPipe
+	}
+
+	// Set write deadline to prevent blocking indefinitely on congested 4G networks.
+	// Without this, a blocked WriteMessage holds writeMu forever. While writeMu no
+	// longer blocks pong responses (control frames bypass it), a stuck write still
+	// wastes resources and delays reconnection.
+	if err := w.conn.SetWriteDeadline(time.Now().Add(writeDeadline)); err != nil {
+		return 0, err
 	}
 
 	err = w.conn.WriteMessage(websocket.BinaryMessage, p)
@@ -590,21 +608,20 @@ func (w *webSocketConn) Write(p []byte) (n int, err error) {
 }
 
 func (w *webSocketConn) Close() error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-
-	if w.closed {
-		return nil
+	if w.closed.Swap(true) {
+		return nil // already closed
 	}
 
-	w.closed = true
-
-	// Send close message
+	// Send close control frame (WriteControl is goroutine-safe)
 	w.conn.WriteControl(
 		websocket.CloseMessage,
 		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
 		time.Now().Add(time.Second),
 	)
+
+	// Wait for any in-progress data write to finish before closing the TCP conn
+	w.writeMu.Lock()
+	defer w.writeMu.Unlock()
 
 	return w.conn.Close()
 }
