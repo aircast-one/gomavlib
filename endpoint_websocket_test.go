@@ -193,14 +193,14 @@ func TestWebSocketEndpoint_SuccessfulConnection(t *testing.T) {
 
 // TestWebSocketEndpoint_ReconnectAfterDisconnect tests reconnection logic
 func TestWebSocketEndpoint_ReconnectAfterDisconnect(t *testing.T) {
-	connectionCount := 0
+	var connectionCount atomic.Int32
 	upgrader := websocket.Upgrader{}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		connectionCount++
+		count := connectionCount.Add(1)
 
 		// First connection: close immediately (simulate network issue)
-		if connectionCount == 1 {
+		if count == 1 {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
@@ -247,7 +247,7 @@ func TestWebSocketEndpoint_ReconnectAfterDisconnect(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Verify we got at least 2 connection attempts
-	require.GreaterOrEqual(t, connectionCount, 2, "should have attempted reconnection")
+	require.GreaterOrEqual(t, connectionCount.Load(), int32(2), "should have attempted reconnection")
 
 	// Verify endpoint is in connected state
 	e.mu.Lock()
@@ -532,7 +532,7 @@ func TestWebSocketEndpoint_CategorizeError(t *testing.T) {
 
 // TestWebSocketEndpoint_PingPongMechanism tests ping/pong keepalive
 func TestWebSocketEndpoint_PingPongMechanism(t *testing.T) {
-	pingReceived := false
+	var pingReceived atomic.Bool
 
 	// Create a WebSocket server that responds to pings
 	upgrader := websocket.Upgrader{}
@@ -544,7 +544,7 @@ func TestWebSocketEndpoint_PingPongMechanism(t *testing.T) {
 		defer conn.Close()
 
 		conn.SetPingHandler(func(appData string) error {
-			pingReceived = true
+			pingReceived.Store(true)
 			return conn.WriteControl(websocket.PongMessage, []byte(appData), time.Now().Add(time.Second))
 		})
 
@@ -584,7 +584,7 @@ func TestWebSocketEndpoint_PingPongMechanism(t *testing.T) {
 	e.close()
 
 	// Verify ping was received (pinger is working)
-	require.True(t, pingReceived, "server should have received ping")
+	require.True(t, pingReceived.Load(), "server should have received ping")
 }
 
 // TestWebSocketEndpoint_StateCallback tests OnStateChange callback
@@ -684,16 +684,25 @@ func TestWebSocketEndpoint_ReadWriteOperations(t *testing.T) {
 	require.NoError(t, err)
 	e := conf.(*endpointWebSocket)
 
-	// Start connection
+	// Start connection — use channel to safely pass rwc across goroutines
 	done := make(chan struct{})
-	var rwc io.ReadWriteCloser
+	rwcCh := make(chan io.ReadWriteCloser, 1)
 	go func() {
 		defer close(done)
-		_, rwc, _ = e.provide()
+		_, rwc, _ := e.provide()
+		if rwc != nil {
+			rwcCh <- rwc
+		}
+		close(rwcCh)
 	}()
 
-	// Wait for connection
-	time.Sleep(200 * time.Millisecond)
+	// Wait for connection with timeout
+	var rwc io.ReadWriteCloser
+	select {
+	case rwc = <-rwcCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for connection")
+	}
 
 	// Write data
 	testData := []byte("test message")
@@ -905,12 +914,12 @@ func TestWebSocketEndpoint_HeaderProviderError(t *testing.T) {
 
 // TestWebSocketEndpoint_HeadersSupport tests custom headers
 func TestWebSocketEndpoint_HeadersSupport(t *testing.T) {
-	receivedAuth := ""
+	authCh := make(chan string, 1)
 
 	// Create a WebSocket server that checks auth header
 	upgrader := websocket.Upgrader{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedAuth = r.Header.Get("Authorization")
+		authCh <- r.Header.Get("Authorization")
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			return
@@ -943,8 +952,13 @@ func TestWebSocketEndpoint_HeadersSupport(t *testing.T) {
 	// Start connection
 	go e.provide()
 
-	// Wait for connection
-	time.Sleep(300 * time.Millisecond)
+	// Wait for auth header via channel
+	var receivedAuth string
+	select {
+	case receivedAuth = <-authCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for connection")
+	}
 
 	e.close()
 
@@ -1012,16 +1026,25 @@ func TestWebSocketEndpoint_PongNotBlockedBySlowWrite(t *testing.T) {
 	require.NoError(t, err)
 	e := conf.(*endpointWebSocket)
 
-	// Start connection
+	// Start connection — use a channel to safely pass rwc across goroutines
 	done := make(chan struct{})
-	var rwc io.ReadWriteCloser
+	rwcCh := make(chan io.ReadWriteCloser, 1)
 	go func() {
 		defer close(done)
-		_, rwc, _ = e.provide()
+		_, rwc, _ := e.provide()
+		if rwc != nil {
+			rwcCh <- rwc
+		}
+		close(rwcCh)
 	}()
 
-	// Wait for connection
-	time.Sleep(200 * time.Millisecond)
+	// Wait for connection with timeout
+	var rwc io.ReadWriteCloser
+	select {
+	case rwc = <-rwcCh:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for connection")
+	}
 
 	// Simulate slow writes: flood the write path so it's frequently holding writeMu
 	if rwc != nil {
