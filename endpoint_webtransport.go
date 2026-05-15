@@ -79,6 +79,12 @@ const (
 // ErrDatagramTruncated is returned when a received datagram exceeds the buffer size
 var ErrDatagramTruncated = errors.New("datagram truncated: buffer too small")
 
+// WebTransportSessionProvider is implemented by WebTransport endpoints to expose
+// the underlying QUIC session for opening additional streams.
+type WebTransportSessionProvider interface {
+	Session() *webtransport.Session
+}
+
 // EndpointWebTransport sets up a WebTransport endpoint with QUIC connection migration.
 // This endpoint survives IP address changes (e.g., cellular handoffs) without losing
 // the connection, as QUIC uses connection IDs rather than IP:port tuples.
@@ -405,6 +411,15 @@ func (e *endpointWebTransport) GetState() ConnectionState {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.state
+}
+
+// Session returns the current WebTransport session, or nil if not connected.
+// This allows opening additional QUIC streams on the same session for
+// non-MAVLink traffic (e.g., SFU signaling).
+func (e *endpointWebTransport) Session() *webtransport.Session {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.session
 }
 
 // WebTransportStats contains connection statistics
