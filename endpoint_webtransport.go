@@ -74,7 +74,13 @@ const (
 	defaultKeepAlivePeriod       = 30 * time.Second
 	defaultMaxIncomingStreams    = 100
 	defaultMaxIncomingUniStreams = 100
+
+	defaultDatagramKeepAlivePeriod = 10 * time.Second
 )
+
+// keepAlivePayload is a single NUL byte sent as an application-level keepalive.
+// MAVLink parsers ignore it because valid frames start with 0xFD (v2) or 0xFE (v1).
+const keepAlivePayload = 0x00
 
 // ErrDatagramTruncated is returned when a received datagram exceeds the buffer size
 var ErrDatagramTruncated = errors.New("datagram truncated: buffer too small")
@@ -127,6 +133,11 @@ type EndpointWebTransport struct {
 	// UseDatagrams enables unreliable datagram mode (lower latency, may drop)
 	// If false, uses reliable bidirectional streams
 	UseDatagrams bool
+
+	// DatagramKeepAlivePeriod sets how often to send an application-level keepalive datagram.
+	// This works around quic-go skipping QUIC-level keepalives when congestion-limited.
+	// If zero, defaults to 10 seconds. Set to -1 to disable.
+	DatagramKeepAlivePeriod time.Duration
 
 	// Reconnection configuration
 	InitialRetryPeriod   time.Duration // Default: 1s
@@ -379,12 +390,22 @@ func (e *endpointWebTransport) connect() (io.ReadWriteCloser, error) {
 	if e.conf.UseDatagrams {
 		// Use unreliable datagrams for MAVLink (lower latency)
 		e.logger.Printf("event=datagram_conn_open url=%s use_datagrams=true", e.conf.URL)
-		return &webTransportDatagramConn{
+		datagramConn := &webTransportDatagramConn{
 			session:   session,
 			ctx:       e.ctx,
 			logger:    e.logger,
+			done:      make(chan struct{}),
 			startTime: time.Now(),
-		}, nil
+		}
+		go datagramConn.monitorConnection()
+		if e.conf.DatagramKeepAlivePeriod >= 0 {
+			period := e.conf.DatagramKeepAlivePeriod
+			if period == 0 {
+				period = defaultDatagramKeepAlivePeriod
+			}
+			go datagramConn.keepalive(period)
+		}
+		return datagramConn, nil
 	}
 
 	// Use reliable bidirectional stream
@@ -436,6 +457,7 @@ type webTransportDatagramConn struct {
 	logger    WebTransportLogger
 	mu        sync.Mutex
 	closed    bool
+	done      chan struct{} // closed when Close() is called, stops goroutines
 	startTime time.Time
 
 	// Atomic counters for wide event logging
@@ -447,7 +469,7 @@ type webTransportDatagramConn struct {
 	bytesWritten     atomic.Int64
 }
 
-func (c *webTransportDatagramConn) Read(p []byte) (n int, err error) {
+func (c *webTransportDatagramConn) Read(p []byte) (int, error) {
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
@@ -455,36 +477,43 @@ func (c *webTransportDatagramConn) Read(p []byte) (n int, err error) {
 	}
 	c.mu.Unlock()
 
-	data, err := c.session.ReceiveDatagram(c.ctx)
-	if err != nil {
-		c.readErrors.Add(1)
-		return 0, err
-	}
-
-	if len(data) > len(p) {
-		// Return error only, no partial data. Returning partial MAVLink data would
-		// cause parsing failures since MAVLink messages must be complete.
-		// The caller should ensure buffer is sized appropriately (typically 280+ bytes
-		// for MAVLink v2 max message size).
-		c.readErrors.Add(1)
-		return 0, ErrDatagramTruncated
-	}
-
-	bytesRead := copy(p, data)
-	readCount := c.datagramsRead.Add(1)
-	c.bytesRead.Add(int64(bytesRead))
-
-	// Wide event: Log first 3 datagrams received and then periodically
-	if readCount <= 3 || readCount%1000 == 0 {
-		firstByte := "N/A"
-		if bytesRead > 0 {
-			firstByte = fmt.Sprintf("0x%02x", data[0])
+	for {
+		data, err := c.session.ReceiveDatagram(c.ctx)
+		if err != nil {
+			c.readErrors.Add(1)
+			return 0, err
 		}
-		c.logger.Printf("event=datagram_recv datagram_num=%d bytes=%d first_byte=%s total_read=%d total_bytes=%d",
-			readCount, bytesRead, firstByte, readCount, c.bytesRead.Load())
-	}
 
-	return bytesRead, nil
+		// Skip keepalive datagrams (single NUL byte)
+		if len(data) == 1 && data[0] == keepAlivePayload {
+			continue
+		}
+
+		if len(data) > len(p) {
+			// Return error only, no partial data. Returning partial MAVLink data would
+			// cause parsing failures since MAVLink messages must be complete.
+			// The caller should ensure buffer is sized appropriately (typically 280+ bytes
+			// for MAVLink v2 max message size).
+			c.readErrors.Add(1)
+			return 0, ErrDatagramTruncated
+		}
+
+		bytesRead := copy(p, data)
+		readCount := c.datagramsRead.Add(1)
+		c.bytesRead.Add(int64(bytesRead))
+
+		// Wide event: Log first 3 datagrams received and then periodically
+		if readCount <= 3 || readCount%1000 == 0 {
+			firstByte := "N/A"
+			if bytesRead > 0 {
+				firstByte = fmt.Sprintf("0x%02x", data[0])
+			}
+			c.logger.Printf("event=datagram_recv datagram_num=%d bytes=%d first_byte=%s total_read=%d total_bytes=%d",
+				readCount, bytesRead, firstByte, readCount, c.bytesRead.Load())
+		}
+
+		return bytesRead, nil
+	}
 }
 
 func (c *webTransportDatagramConn) Write(p []byte) (n int, err error) {
@@ -520,6 +549,54 @@ func (c *webTransportDatagramConn) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+func (c *webTransportDatagramConn) monitorConnection() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.done:
+			return
+		case <-ticker.C:
+			c.logger.Printf("event=quic_connection_stats "+
+				"datagrams_read=%d datagrams_written=%d "+
+				"bytes_read=%d bytes_written=%d "+
+				"read_errors=%d write_errors=%d uptime_ms=%d",
+				c.datagramsRead.Load(),
+				c.datagramsWritten.Load(),
+				c.bytesRead.Load(),
+				c.bytesWritten.Load(),
+				c.readErrors.Load(),
+				c.writeErrors.Load(),
+				time.Since(c.startTime).Milliseconds())
+		}
+	}
+}
+
+func (c *webTransportDatagramConn) keepalive(period time.Duration) {
+	ticker := time.NewTicker(period)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.done:
+			return
+		case <-ticker.C:
+
+			// Send a single NUL byte as keepalive. This generates a QUIC packet
+			// that resets the peer's idle timer, working around quic-go's
+			// keepalive suppression during congestion (connection.go:870-873).
+			if err := c.session.SendDatagram([]byte{keepAlivePayload}); err != nil {
+				// Transient errors (congestion, buffer full) are expected on cellular.
+				// Only stop if the session is actually closed — the read loop handles reconnection.
+				if c.ctx.Err() != nil {
+					return
+				}
+			}
+		}
+	}
+}
+
 func (c *webTransportDatagramConn) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -528,6 +605,7 @@ func (c *webTransportDatagramConn) Close() error {
 		return nil
 	}
 	c.closed = true
+	close(c.done)
 
 	// Wide event: Log connection lifecycle summary
 	duration := time.Since(c.startTime)
