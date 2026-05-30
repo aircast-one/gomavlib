@@ -482,7 +482,6 @@ type webSocketConn struct {
 	bytesWritten    int64
 	messagesRead    int64
 	messagesWritten int64
-	messagesDropped int64
 }
 
 // reader continuously reads from WebSocket and forwards to readCh
@@ -531,12 +530,14 @@ func (w *webSocketConn) reader() {
 			continue
 		}
 
+		// Blocking send: if the consumer stalls, ReadMessage() in the next loop
+		// iteration will block, the TCP buffer will fill, and the peer eventually
+		// experiences flow control. This is correct behavior for command-carrying
+		// frames — silent drops are unacceptable.
 		select {
 		case w.readCh <- data:
 		case <-w.ctx.Done():
 			return
-		default:
-			atomic.AddInt64(&w.messagesDropped, 1)
 		}
 	}
 }
@@ -634,6 +635,5 @@ func (w *webSocketConn) GetStats() map[string]interface{} {
 		"bytes_written":    atomic.LoadInt64(&w.bytesWritten),
 		"messages_read":    atomic.LoadInt64(&w.messagesRead),
 		"messages_written": atomic.LoadInt64(&w.messagesWritten),
-		"messages_dropped": atomic.LoadInt64(&w.messagesDropped),
 	}
 }

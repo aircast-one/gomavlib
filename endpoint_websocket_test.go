@@ -1,6 +1,7 @@
 package gomavlib
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -1071,3 +1072,100 @@ func TestWebSocketEndpoint_PongNotBlockedBySlowWrite(t *testing.T) {
 	require.GreaterOrEqual(t, received, int32(5),
 		"expected at least 5 pongs (got %d) — pong handler should not be blocked by writes", received)
 }
+
+// TestWebSocketConn_ReaderBlocksWhenChannelFull verifies that webSocketConn.reader()
+// applies backpressure instead of silently dropping inbound frames when the consumer
+// is slow. Regression test for the silent-drop bug behind aircast-one/aircast-agent#154,
+// where the reader's non-blocking send with a default branch dropped MAVLink command
+// frames when readCh filled.
+func TestWebSocketConn_ReaderBlocksWhenChannelFull(t *testing.T) {
+	const totalMessages = 50
+
+	// Build payloads we will send and then assert arrive intact, in order.
+	payloads := make([][]byte, totalMessages)
+	for i := 0; i < totalMessages; i++ {
+		payloads[i] = []byte{byte(i), 0xAA, 0xBB, byte(i ^ 0xFF)}
+	}
+
+	serverDone := make(chan struct{})
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer close(serverDone)
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+
+		for i := 0; i < totalMessages; i++ {
+			if err := conn.WriteMessage(websocket.BinaryMessage, payloads[i]); err != nil {
+				return
+			}
+		}
+
+		// Hold the connection open until the client closes — so ReadMessage on the
+		// client side returns naturally when we tear down.
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	defer server.Close()
+
+	wsURL := "ws" + server.URL[4:]
+
+	dialer := &websocket.Dialer{HandshakeTimeout: 2 * time.Second}
+	clientConn, _, err := dialer.Dial(wsURL, nil)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Tiny buffer forces the reader to block on send if the consumer doesn't drain
+	// fast enough. With the silent-drop bug, most messages would be lost.
+	rwc := &webSocketConn{
+		conn:       clientConn,
+		ctx:        ctx,
+		readCh:     make(chan []byte, 2),
+		pingPeriod: time.Hour,
+		pongWait:   time.Hour,
+	}
+
+	readerDone := make(chan struct{})
+	go func() {
+		defer close(readerDone)
+		rwc.reader()
+	}()
+
+	// Drain the channel slowly enough that the reader goroutine must block on send
+	// for most iterations. Use a deadline rather than time.Sleep so the test fails
+	// loudly if the reader silently drops.
+	received := make([][]byte, 0, totalMessages)
+	deadline := time.After(10 * time.Second)
+	for len(received) < totalMessages {
+		select {
+		case data, ok := <-rwc.readCh:
+			if !ok {
+				t.Fatalf("readCh closed prematurely after %d/%d messages", len(received), totalMessages)
+			}
+			received = append(received, data)
+		case <-deadline:
+			t.Fatalf("timed out after receiving %d/%d messages — frames were dropped or stalled", len(received), totalMessages)
+		}
+	}
+
+	// Every payload must have arrived intact, in order. A silent drop would manifest
+	// as either missing messages (timeout above) or out-of-order/garbled bytes here.
+	require.Equal(t, totalMessages, len(received), "expected all messages to arrive without drops")
+	for i, got := range received {
+		require.Equal(t, payloads[i], got, "payload %d mismatch — possible drop or reorder", i)
+	}
+
+	// Tear down cleanly so we do not leak the reader goroutine.
+	cancel()
+	clientConn.Close()
+	<-readerDone
+	<-serverDone
+}
+
