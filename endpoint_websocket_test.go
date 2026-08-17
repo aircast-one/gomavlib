@@ -18,7 +18,7 @@ import (
 // to block and return errTerminated instead of panicking
 func TestWebSocketEndpoint_AuthError(t *testing.T) {
 	// Create a server that returns 401 Unauthorized
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte("Unauthorized"))
 	}))
@@ -27,7 +27,7 @@ func TestWebSocketEndpoint_AuthError(t *testing.T) {
 	// Replace http:// with ws://
 	wsURL := "ws" + server.URL[4:]
 
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL:                  wsURL,
 		InitialRetryPeriod:   100 * time.Millisecond,
 		MaxRetryPeriod:       1 * time.Second,
@@ -36,9 +36,9 @@ func TestWebSocketEndpoint_AuthError(t *testing.T) {
 		HandshakeTimeout:     1 * time.Second,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 
 	// Start the endpoint in a goroutine
 	provideDone := make(chan struct{})
@@ -77,7 +77,7 @@ func TestWebSocketEndpoint_CircuitBreakerOpen(t *testing.T) {
 	// Use invalid port so connections fail immediately
 	wsURL := "ws://127.0.0.1:9999/test"
 
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL:                   wsURL,
 		InitialRetryPeriod:    50 * time.Millisecond,
 		MaxRetryPeriod:        100 * time.Millisecond,
@@ -88,9 +88,9 @@ func TestWebSocketEndpoint_CircuitBreakerOpen(t *testing.T) {
 		CircuitBreakerTimeout: 1 * time.Second,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 
 	// Start the endpoint in a goroutine
 	provideDone := make(chan struct{})
@@ -130,7 +130,7 @@ func TestWebSocketEndpoint_SuccessfulConnection(t *testing.T) {
 			t.Logf("Upgrade error: %v", err)
 			return
 		}
-		defer conn.Close()
+		defer conn.Close() //nolint:errcheck
 
 		// Keep connection open for a bit
 		time.Sleep(500 * time.Millisecond)
@@ -139,7 +139,7 @@ func TestWebSocketEndpoint_SuccessfulConnection(t *testing.T) {
 
 	wsURL := "ws" + server.URL[4:]
 
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL:                  wsURL,
 		InitialRetryPeriod:   100 * time.Millisecond,
 		MaxRetryPeriod:       1 * time.Second,
@@ -150,9 +150,9 @@ func TestWebSocketEndpoint_SuccessfulConnection(t *testing.T) {
 		PongWait:             10 * time.Second,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 
 	// Start the endpoint in a goroutine
 	provideDone := make(chan struct{})
@@ -211,7 +211,7 @@ func TestWebSocketEndpoint_ReconnectAfterDisconnect(t *testing.T) {
 			t.Logf("Upgrade error: %v", err)
 			return
 		}
-		defer conn.Close()
+		defer conn.Close() //nolint:errcheck
 
 		// Keep connection open
 		time.Sleep(500 * time.Millisecond)
@@ -220,7 +220,7 @@ func TestWebSocketEndpoint_ReconnectAfterDisconnect(t *testing.T) {
 
 	wsURL := "ws" + server.URL[4:]
 
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL:                  wsURL,
 		InitialRetryPeriod:   100 * time.Millisecond,
 		MaxRetryPeriod:       500 * time.Millisecond,
@@ -231,9 +231,9 @@ func TestWebSocketEndpoint_ReconnectAfterDisconnect(t *testing.T) {
 		PongWait:             10 * time.Second,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 
 	// Start the endpoint in a goroutine
 	provideDone := make(chan struct{})
@@ -277,7 +277,7 @@ func TestWebSocketEndpoint_OnlyReturnsErrTerminated(t *testing.T) {
 	testCases := []struct {
 		name       string
 		statusCode int
-		setupFunc  func(e *endpointWebSocket)
+		setupFunc  func(e *EndpointWebSocket)
 	}{
 		{
 			name:       "401 Unauthorized",
@@ -293,7 +293,7 @@ func TestWebSocketEndpoint_OnlyReturnsErrTerminated(t *testing.T) {
 		},
 		{
 			name: "Circuit Breaker Open",
-			setupFunc: func(e *endpointWebSocket) {
+			setupFunc: func(e *EndpointWebSocket) {
 				// Force circuit breaker to open (now managed by retryState)
 				e.retryState.OpenCircuitBreaker()
 			},
@@ -303,7 +303,7 @@ func TestWebSocketEndpoint_OnlyReturnsErrTerminated(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Create server that returns the specified status code
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				if tc.statusCode != 0 {
 					w.WriteHeader(tc.statusCode)
 				}
@@ -312,7 +312,7 @@ func TestWebSocketEndpoint_OnlyReturnsErrTerminated(t *testing.T) {
 
 			wsURL := "ws" + server.URL[4:]
 
-			endpoint := EndpointWebSocket{
+			endpoint := &EndpointWebSocket{
 				URL:                   wsURL,
 				InitialRetryPeriod:    50 * time.Millisecond,
 				MaxRetryPeriod:        100 * time.Millisecond,
@@ -323,9 +323,9 @@ func TestWebSocketEndpoint_OnlyReturnsErrTerminated(t *testing.T) {
 				CircuitBreakerTimeout: 1 * time.Second,
 			}
 
-			conf, err := endpoint.init(nil)
+			err := endpoint.init(nil)
 			require.NoError(t, err)
-			e := conf.(*endpointWebSocket)
+			e := endpoint
 
 			if tc.setupFunc != nil {
 				tc.setupFunc(e)
@@ -361,48 +361,29 @@ func TestWebSocketEndpoint_OnlyReturnsErrTerminated(t *testing.T) {
 
 // TestWebSocketEndpoint_Label tests the endpoint label
 func TestWebSocketEndpoint_Label(t *testing.T) {
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL:   "ws://localhost:8080/test",
 		Label: "test-label",
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 	defer e.close()
 
 	// The label is stored in conf
-	require.Equal(t, "test-label", e.conf.Label)
-}
-
-// TestWebSocketEndpoint_Conf tests the Conf() method
-func TestWebSocketEndpoint_Conf(t *testing.T) {
-	endpoint := EndpointWebSocket{
-		URL:   "ws://localhost:8080/test",
-		Label: "test-endpoint",
-	}
-
-	conf, err := endpoint.init(nil)
-	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
-	defer e.close()
-
-	returnedConf := e.Conf().(EndpointWebSocket)
-	// Just verify it returns a config (defaults may be filled in)
-	require.NotEqual(t, EndpointWebSocket{}, returnedConf)
-	require.Equal(t, endpoint.URL, returnedConf.URL)
-	require.Equal(t, endpoint.Label, returnedConf.Label)
+	require.Equal(t, "test-label", e.Label)
 }
 
 // TestWebSocketEndpoint_OneChannelAtATime tests oneChannelAtAtime() method
 func TestWebSocketEndpoint_OneChannelAtATime(t *testing.T) {
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL: "ws://localhost:8080/test",
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 	defer e.close()
 
 	// WebSocket endpoints should return true (one channel at a time)
@@ -411,13 +392,13 @@ func TestWebSocketEndpoint_OneChannelAtATime(t *testing.T) {
 
 // TestWebSocketEndpoint_IsEndpoint tests isEndpoint() method
 func TestWebSocketEndpoint_IsEndpoint(t *testing.T) {
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL: "ws://localhost:8080/test",
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 	defer e.close()
 
 	// This is a marker method that should do nothing
@@ -426,7 +407,7 @@ func TestWebSocketEndpoint_IsEndpoint(t *testing.T) {
 
 // TestWebSocketEndpoint_GetState tests GetState() method
 func TestWebSocketEndpoint_GetState(t *testing.T) {
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL:                  "ws://localhost:8080/test",
 		InitialRetryPeriod:   100 * time.Millisecond,
 		MaxRetryPeriod:       1 * time.Second,
@@ -435,9 +416,9 @@ func TestWebSocketEndpoint_GetState(t *testing.T) {
 		HandshakeTimeout:     1 * time.Second,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 	defer e.close()
 
 	// Initially should be disconnected
@@ -454,14 +435,14 @@ func TestWebSocketEndpoint_IsHealthy(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer conn.Close() //nolint:errcheck
 		time.Sleep(1 * time.Second)
 	}))
 	defer server.Close()
 
 	wsURL := "ws" + server.URL[4:]
 
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL:                  wsURL,
 		InitialRetryPeriod:   100 * time.Millisecond,
 		MaxRetryPeriod:       1 * time.Second,
@@ -472,12 +453,12 @@ func TestWebSocketEndpoint_IsHealthy(t *testing.T) {
 		PongWait:             10 * time.Second,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 
 	// Start connection
-	go e.provide()
+	go e.provide() //nolint:errcheck
 
 	// Wait for connection
 	time.Sleep(300 * time.Millisecond)
@@ -491,7 +472,7 @@ func TestWebSocketEndpoint_IsHealthy(t *testing.T) {
 
 // TestWebSocketEndpoint_GetStats tests GetStats() method
 func TestWebSocketEndpoint_GetStats(t *testing.T) {
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL:                  "ws://localhost:8080/test",
 		InitialRetryPeriod:   100 * time.Millisecond,
 		MaxRetryPeriod:       1 * time.Second,
@@ -500,9 +481,9 @@ func TestWebSocketEndpoint_GetStats(t *testing.T) {
 		HandshakeTimeout:     1 * time.Second,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 	defer e.close()
 
 	stats := e.GetStats()
@@ -514,13 +495,13 @@ func TestWebSocketEndpoint_GetStats(t *testing.T) {
 
 // TestWebSocketEndpoint_CategorizeError tests error categorization
 func TestWebSocketEndpoint_CategorizeError(t *testing.T) {
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL: "ws://localhost:8080/test",
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 	defer e.close()
 
 	// Test that categorizeError doesn't crash on various error types
@@ -541,7 +522,7 @@ func TestWebSocketEndpoint_PingPongMechanism(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer conn.Close() //nolint:errcheck
 
 		conn.SetPingHandler(func(appData string) error {
 			pingReceived.Store(true)
@@ -550,8 +531,8 @@ func TestWebSocketEndpoint_PingPongMechanism(t *testing.T) {
 
 		// Keep connection alive
 		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
+			_, _, readErr := conn.ReadMessage()
+			if readErr != nil {
 				break
 			}
 		}
@@ -560,7 +541,7 @@ func TestWebSocketEndpoint_PingPongMechanism(t *testing.T) {
 
 	wsURL := "ws" + server.URL[4:]
 
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL:                  wsURL,
 		InitialRetryPeriod:   100 * time.Millisecond,
 		MaxRetryPeriod:       1 * time.Second,
@@ -571,12 +552,12 @@ func TestWebSocketEndpoint_PingPongMechanism(t *testing.T) {
 		PongWait:             1 * time.Second,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 
 	// Start connection
-	go e.provide()
+	go e.provide() //nolint:errcheck
 
 	// Wait for ping to be sent
 	time.Sleep(500 * time.Millisecond)
@@ -599,14 +580,14 @@ func TestWebSocketEndpoint_StateCallback(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer conn.Close() //nolint:errcheck
 		time.Sleep(300 * time.Millisecond)
 	}))
 	defer server.Close()
 
 	wsURL := "ws" + server.URL[4:]
 
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL:                  wsURL,
 		InitialRetryPeriod:   100 * time.Millisecond,
 		MaxRetryPeriod:       1 * time.Second,
@@ -615,19 +596,19 @@ func TestWebSocketEndpoint_StateCallback(t *testing.T) {
 		HandshakeTimeout:     1 * time.Second,
 		PingPeriod:           5 * time.Second,
 		PongWait:             10 * time.Second,
-		OnStateChange: func(oldState, newState WebSocketState, err error) {
+		OnStateChange: func(_, newState WebSocketState, _ error) {
 			mu.Lock()
 			stateChanges = append(stateChanges, newState)
 			mu.Unlock()
 		},
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 
 	// Start connection
-	go e.provide()
+	go e.provide() //nolint:errcheck
 
 	// Wait for connection to establish
 	time.Sleep(300 * time.Millisecond)
@@ -653,14 +634,14 @@ func TestWebSocketEndpoint_ReadWriteOperations(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer conn.Close() //nolint:errcheck
 
 		// Read one message
 		_, msg, err := conn.ReadMessage()
 		if err == nil {
 			receivedData <- msg
 			// Echo it back
-			conn.WriteMessage(websocket.BinaryMessage, msg)
+			conn.WriteMessage(websocket.BinaryMessage, msg) //nolint:errcheck
 		}
 
 		time.Sleep(500 * time.Millisecond)
@@ -669,7 +650,7 @@ func TestWebSocketEndpoint_ReadWriteOperations(t *testing.T) {
 
 	wsURL := "ws" + server.URL[4:]
 
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL:                  wsURL,
 		InitialRetryPeriod:   100 * time.Millisecond,
 		MaxRetryPeriod:       1 * time.Second,
@@ -680,9 +661,9 @@ func TestWebSocketEndpoint_ReadWriteOperations(t *testing.T) {
 		PongWait:             10 * time.Second,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 
 	// Start connection — use channel to safely pass rwc across goroutines
 	done := make(chan struct{})
@@ -707,8 +688,8 @@ func TestWebSocketEndpoint_ReadWriteOperations(t *testing.T) {
 	// Write data
 	testData := []byte("test message")
 	if rwc != nil {
-		n, err := rwc.Write(testData)
-		require.NoError(t, err)
+		n, writeErr := rwc.Write(testData)
+		require.NoError(t, writeErr)
 		require.Equal(t, len(testData), n)
 	}
 
@@ -747,7 +728,7 @@ func TestWebSocketEndpoint_HeaderProvider(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer conn.Close() //nolint:errcheck
 		time.Sleep(500 * time.Millisecond)
 	}))
 	defer server.Close()
@@ -756,7 +737,7 @@ func TestWebSocketEndpoint_HeaderProvider(t *testing.T) {
 
 	// Simulate token refresh: first call returns expired token, subsequent calls return fresh token
 	callCount := int32(0)
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL: wsURL,
 		HeaderProvider: func() (map[string]string, error) {
 			count := atomic.AddInt32(&callCount, 1)
@@ -774,15 +755,15 @@ func TestWebSocketEndpoint_HeaderProvider(t *testing.T) {
 		PongWait:             10 * time.Second,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 
 	// Start connection
 	provideDone := make(chan struct{})
 	go func() {
 		defer close(provideDone)
-		e.provide()
+		e.provide() //nolint:errcheck
 	}()
 
 	// Wait for reconnection with fresh token
@@ -808,15 +789,15 @@ func TestWebSocketEndpoint_HeaderProvider(t *testing.T) {
 // are retryable when HeaderProvider is set, but not when only static Headers are used
 func TestWebSocketEndpoint_ShouldRetryError_WithHeaderProvider(t *testing.T) {
 	// Without HeaderProvider: auth errors are NOT retryable
-	endpointNoProvider := EndpointWebSocket{
+	endpointNoProvider := &EndpointWebSocket{
 		URL: "ws://localhost:8080/test",
 		Headers: map[string]string{
 			"Authorization": "Bearer static-token",
 		},
 	}
-	confNo, err := endpointNoProvider.init(nil)
+	err := endpointNoProvider.init(nil)
 	require.NoError(t, err)
-	eNoProvider := confNo.(*endpointWebSocket)
+	eNoProvider := endpointNoProvider
 	defer eNoProvider.close()
 
 	authErr := errors.New("failed to connect to WebSocket: 401 Unauthorized")
@@ -824,15 +805,15 @@ func TestWebSocketEndpoint_ShouldRetryError_WithHeaderProvider(t *testing.T) {
 		"auth errors should NOT be retryable without HeaderProvider")
 
 	// With HeaderProvider: auth errors ARE retryable
-	endpointWithProvider := EndpointWebSocket{
+	endpointWithProvider := &EndpointWebSocket{
 		URL: "ws://localhost:8080/test",
 		HeaderProvider: func() (map[string]string, error) {
 			return map[string]string{"Authorization": "Bearer fresh-token"}, nil
 		},
 	}
-	confWith, err := endpointWithProvider.init(nil)
+	err = endpointWithProvider.init(nil)
 	require.NoError(t, err)
-	eWithProvider := confWith.(*endpointWebSocket)
+	eWithProvider := endpointWithProvider
 	defer eWithProvider.close()
 
 	require.True(t, eWithProvider.shouldRetryError(authErr),
@@ -857,7 +838,7 @@ func TestWebSocketEndpoint_HeaderProviderError(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer conn.Close() //nolint:errcheck
 		time.Sleep(500 * time.Millisecond)
 	}))
 	defer server.Close()
@@ -866,32 +847,32 @@ func TestWebSocketEndpoint_HeaderProviderError(t *testing.T) {
 
 	// HeaderProvider that always returns an error (simulates token unavailable)
 	callCount := int32(0)
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL: wsURL,
 		HeaderProvider: func() (map[string]string, error) {
 			atomic.AddInt32(&callCount, 1)
 			return nil, errors.New("failed to refresh expired token: refresh token revoked")
 		},
-		InitialRetryPeriod:   50 * time.Millisecond,
-		MaxRetryPeriod:       100 * time.Millisecond,
-		BackoffMultiplier:    1.5,
-		MaxReconnectAttempts: 0,
-		HandshakeTimeout:     1 * time.Second,
-		PingPeriod:           5 * time.Second,
-		PongWait:             10 * time.Second,
+		InitialRetryPeriod:    50 * time.Millisecond,
+		MaxRetryPeriod:        100 * time.Millisecond,
+		BackoffMultiplier:     1.5,
+		MaxReconnectAttempts:  0,
+		HandshakeTimeout:      1 * time.Second,
+		PingPeriod:            5 * time.Second,
+		PongWait:              10 * time.Second,
 		MaxConsecutiveErrors:  5,
 		CircuitBreakerTimeout: 1 * time.Second,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 
 	// Start connection in goroutine
 	provideDone := make(chan struct{})
 	go func() {
 		defer close(provideDone)
-		e.provide()
+		e.provide() //nolint:errcheck
 	}()
 
 	// Wait for several retry cycles
@@ -924,14 +905,14 @@ func TestWebSocketEndpoint_HeadersSupport(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer conn.Close() //nolint:errcheck
 		time.Sleep(200 * time.Millisecond)
 	}))
 	defer server.Close()
 
 	wsURL := "ws" + server.URL[4:]
 
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL: wsURL,
 		Headers: map[string]string{
 			"Authorization": "Bearer test-token-123",
@@ -945,12 +926,12 @@ func TestWebSocketEndpoint_HeadersSupport(t *testing.T) {
 		PongWait:             10 * time.Second,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 
 	// Start connection
-	go e.provide()
+	go e.provide() //nolint:errcheck
 
 	// Wait for auth header via channel
 	var receivedAuth string
@@ -981,19 +962,20 @@ func TestWebSocketEndpoint_PongNotBlockedBySlowWrite(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer conn.Close() //nolint:errcheck
 
 		// Track pongs received from the client
-		conn.SetPongHandler(func(appData string) error {
+		conn.SetPongHandler(func(string) error {
 			pongCount.Add(1)
 			return nil
 		})
 
 		// Send pings every 100ms to test pong responsiveness
 		go func() {
-			for i := 0; i < 10; i++ {
+			for range 10 {
 				time.Sleep(100 * time.Millisecond)
-				if err := conn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(time.Second)); err != nil {
+				pingErr := conn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(time.Second))
+				if pingErr != nil {
 					return
 				}
 			}
@@ -1001,8 +983,8 @@ func TestWebSocketEndpoint_PongNotBlockedBySlowWrite(t *testing.T) {
 
 		// Read loop to keep the connection alive and process pong handlers
 		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
+			_, _, readErr := conn.ReadMessage()
+			if readErr != nil {
 				return
 			}
 		}
@@ -1011,7 +993,7 @@ func TestWebSocketEndpoint_PongNotBlockedBySlowWrite(t *testing.T) {
 
 	wsURL := "ws" + server.URL[4:]
 
-	endpoint := EndpointWebSocket{
+	endpoint := &EndpointWebSocket{
 		URL:                  wsURL,
 		InitialRetryPeriod:   100 * time.Millisecond,
 		MaxRetryPeriod:       1 * time.Second,
@@ -1022,9 +1004,9 @@ func TestWebSocketEndpoint_PongNotBlockedBySlowWrite(t *testing.T) {
 		PongWait:             10 * time.Second,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	e := conf.(*endpointWebSocket)
+	e := endpoint
 
 	// Start connection — use a channel to safely pass rwc across goroutines
 	done := make(chan struct{})
@@ -1051,7 +1033,7 @@ func TestWebSocketEndpoint_PongNotBlockedBySlowWrite(t *testing.T) {
 		writesDone := make(chan struct{})
 		go func() {
 			defer close(writesDone)
-			for i := 0; i < 50; i++ {
+			for range 50 {
 				_, _ = rwc.Write([]byte("MAVLink frame data padding to simulate real traffic"))
 				time.Sleep(20 * time.Millisecond)
 			}

@@ -4,9 +4,9 @@ package main
 import (
 	"log"
 
-	"github.com/bluenviron/gomavlib/v3"
-	"github.com/bluenviron/gomavlib/v3/pkg/dialect"
-	"github.com/bluenviron/gomavlib/v3/pkg/message"
+	"github.com/aircast-one/gomavlib/v4"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialect"
+	"github.com/aircast-one/gomavlib/v4/pkg/message"
 )
 
 // this example shows how to:
@@ -38,8 +38,8 @@ func main() {
 
 	// create a node which understands the custom dialect
 	node := &gomavlib.Node{
-		Endpoints: []gomavlib.EndpointConf{
-			gomavlib.EndpointSerial{
+		Endpoints: []gomavlib.Endpoint{
+			&gomavlib.EndpointSerial{
 				Device: "/dev/ttyUSB0",
 				Baud:   57600,
 			},

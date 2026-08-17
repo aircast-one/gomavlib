@@ -18,6 +18,7 @@ import (
 // WebSocketState represents the current state of the WebSocket connection
 type WebSocketState int32
 
+// WebSocket connection states.
 const (
 	WSStateDisconnected WebSocketState = iota
 	WSStateConnecting
@@ -43,6 +44,7 @@ func (s WebSocketState) String() string {
 // WebSocketErrorCategory represents the type of error that occurred
 type WebSocketErrorCategory int
 
+// WebSocket error categories used to decide whether a failure is retryable.
 const (
 	ErrorCategoryNetwork WebSocketErrorCategory = iota
 	ErrorCategoryAuth
@@ -53,6 +55,8 @@ const (
 
 // WebSocketStateCallback is called when the connection state changes
 type WebSocketStateCallback func(oldState, newState WebSocketState, err error)
+
+var _ Endpoint = (*EndpointWebSocket)(nil)
 
 // EndpointWebSocket sets up a durable WebSocket endpoint with automatic reconnection.
 // This is designed for persistent WebSocket connections used in MAVLink-over-WebSocket scenarios.
@@ -66,9 +70,9 @@ type WebSocketStateCallback func(oldState, newState WebSocketState, err error)
 //
 // Example:
 //
-//	node, err := gomavlib.NewNode(gomavlib.NodeConf{
-//	    Endpoints: []gomavlib.EndpointConf{
-//	        gomavlib.EndpointWebSocket{
+//	node := &gomavlib.Node{
+//	    Endpoints: []gomavlib.Endpoint{
+//	        &gomavlib.EndpointWebSocket{
 //	            URL: "ws://localhost:8080/mavlink",
 //	            Headers: map[string]string{
 //	                "Authorization": "Bearer token",
@@ -78,8 +82,8 @@ type WebSocketStateCallback func(oldState, newState WebSocketState, err error)
 //	            },
 //	        },
 //	    },
-//	    ...
-//	})
+//	}
+//	err := node.Initialize()
 type EndpointWebSocket struct {
 	// WebSocket URL to connect to (e.g., "ws://localhost:8080/mavlink")
 	URL string
@@ -124,103 +128,88 @@ type EndpointWebSocket struct {
 	// This is useful for routing through custom networks like Tailscale.
 	// If nil, the default dialer is used.
 	NetDialContext func(ctx context.Context, network, addr string) (net.Conn, error)
-}
 
-func (conf EndpointWebSocket) init(node *Node) (Endpoint, error) {
-	// Validate URL
-	if _, err := url.Parse(conf.URL); err != nil {
-		return nil, fmt.Errorf("invalid WebSocket URL: %w", err)
-	}
-
-	// Set defaults
-	if conf.InitialRetryPeriod == 0 {
-		conf.InitialRetryPeriod = 1 * time.Second
-	}
-	if conf.MaxRetryPeriod == 0 {
-		conf.MaxRetryPeriod = 30 * time.Second
-	}
-	if conf.BackoffMultiplier == 0 {
-		conf.BackoffMultiplier = 1.5
-	}
-	if conf.HandshakeTimeout == 0 {
-		conf.HandshakeTimeout = 5 * time.Second
-	}
-	if conf.PingPeriod == 0 {
-		conf.PingPeriod = 30 * time.Second
-	}
-	if conf.PongWait == 0 {
-		conf.PongWait = 120 * time.Second
-	}
-	if conf.MaxConsecutiveErrors == 0 {
-		conf.MaxConsecutiveErrors = 10
-	}
-	if conf.CircuitBreakerTimeout == 0 {
-		conf.CircuitBreakerTimeout = 5 * time.Minute
-	}
-
-	e := &endpointWebSocket{
-		node: node,
-		conf: conf,
-	}
-	err := e.initialize()
-	return e, err
-}
-
-type endpointWebSocket struct {
-	node *Node
-	conf EndpointWebSocket
-
+	node      *Node
 	ctx       context.Context
 	cancel    context.CancelFunc
 	terminate chan struct{}
 	mu        sync.Mutex
 
-	// State management
 	state WebSocketState
 
-	// Reconnection state - uses common retry infrastructure with integrated circuit breaker
 	retryState      *RetryState
 	lastConnectTime time.Time
 	lastErrorTime   time.Time
 }
 
-func (e *endpointWebSocket) initialize() error {
+func (e *EndpointWebSocket) init(node *Node) error {
+	if _, err := url.Parse(e.URL); err != nil {
+		return fmt.Errorf("invalid WebSocket URL: %w", err)
+	}
+
+	if e.InitialRetryPeriod == 0 {
+		e.InitialRetryPeriod = 1 * time.Second
+	}
+	if e.MaxRetryPeriod == 0 {
+		e.MaxRetryPeriod = 30 * time.Second
+	}
+	if e.BackoffMultiplier == 0 {
+		e.BackoffMultiplier = 1.5
+	}
+	if e.HandshakeTimeout == 0 {
+		e.HandshakeTimeout = 5 * time.Second
+	}
+	if e.PingPeriod == 0 {
+		e.PingPeriod = 30 * time.Second
+	}
+	if e.PongWait == 0 {
+		e.PongWait = 120 * time.Second
+	}
+	if e.MaxConsecutiveErrors == 0 {
+		e.MaxConsecutiveErrors = 10
+	}
+	if e.CircuitBreakerTimeout == 0 {
+		e.CircuitBreakerTimeout = 5 * time.Minute
+	}
+
+	e.node = node
 	e.ctx, e.cancel = context.WithCancel(context.Background())
 	e.terminate = make(chan struct{})
 	e.retryState = NewRetryState(RetryPolicy{
-		InitialRetryPeriod:    e.conf.InitialRetryPeriod,
-		MaxRetryPeriod:        e.conf.MaxRetryPeriod,
-		BackoffMultiplier:     e.conf.BackoffMultiplier,
-		MaxReconnectAttempts:  e.conf.MaxReconnectAttempts,
-		MaxConsecutiveErrors:  e.conf.MaxConsecutiveErrors,
-		CircuitBreakerTimeout: e.conf.CircuitBreakerTimeout,
+		InitialRetryPeriod:    e.InitialRetryPeriod,
+		MaxRetryPeriod:        e.MaxRetryPeriod,
+		BackoffMultiplier:     e.BackoffMultiplier,
+		MaxReconnectAttempts:  e.MaxReconnectAttempts,
+		MaxConsecutiveErrors:  e.MaxConsecutiveErrors,
+		CircuitBreakerTimeout: e.CircuitBreakerTimeout,
 	})
 	e.setState(WSStateDisconnected, nil)
+
 	return nil
 }
 
-func (e *endpointWebSocket) close() {
+func (e *EndpointWebSocket) close() {
 	e.cancel()
 	close(e.terminate)
 }
 
-func (e *endpointWebSocket) isEndpoint() {}
+func (e *EndpointWebSocket) isEndpoint() {}
 
-func (e *endpointWebSocket) Conf() EndpointConf {
-	return e.conf
+func (e *EndpointWebSocket) isDatagram() bool {
+	return false
 }
 
-func (e *endpointWebSocket) oneChannelAtAtime() bool {
+func (e *EndpointWebSocket) oneChannelAtAtime() bool {
 	// Return true for automatic reconnection behavior
 	// When the connection drops, provide() will be called again
 	return true
 }
 
-func (e *endpointWebSocket) setState(newState WebSocketState, err error) {
+func (e *EndpointWebSocket) setState(newState WebSocketState, err error) {
 	e.mu.Lock()
 	oldState := e.state
 	e.state = newState
-	callback := e.conf.OnStateChange
+	callback := e.OnStateChange
 	e.mu.Unlock()
 
 	if callback != nil && oldState != newState {
@@ -246,7 +235,7 @@ func (e *endpointWebSocket) setState(newState WebSocketState, err error) {
 // - String matching is locale-independent but message-dependent
 // - Error message changes could affect categorization
 // - We prioritize type assertions where possible to minimize string matching
-func (e *endpointWebSocket) categorizeError(err error) WebSocketErrorCategory {
+func (e *EndpointWebSocket) categorizeError(err error) WebSocketErrorCategory {
 	if err == nil {
 		return ErrorCategoryUnknown
 	}
@@ -297,14 +286,14 @@ func (e *endpointWebSocket) categorizeError(err error) WebSocketErrorCategory {
 
 // shouldRetryError checks if an error is retryable based on its category.
 // Circuit breaker and max attempts are handled by RetryState.RecordError().
-func (e *endpointWebSocket) shouldRetryError(err error) bool {
+func (e *EndpointWebSocket) shouldRetryError(err error) bool {
 	category := e.categorizeError(err)
 
 	// Auth errors are retryable only when a HeaderProvider is set,
 	// because the provider may return fresh tokens on the next attempt.
 	// Without a provider, auth errors require user intervention.
 	if category == ErrorCategoryAuth {
-		return e.conf.HeaderProvider != nil
+		return e.HeaderProvider != nil
 	}
 
 	// Check if circuit breaker is open (managed by RetryState)
@@ -315,7 +304,7 @@ func (e *endpointWebSocket) shouldRetryError(err error) bool {
 	return true
 }
 
-func (e *endpointWebSocket) provide() (string, io.ReadWriteCloser, error) {
+func (e *EndpointWebSocket) provide() (string, io.ReadWriteCloser, error) {
 	for {
 		select {
 		case <-e.terminate:
@@ -376,15 +365,15 @@ func (e *endpointWebSocket) provide() (string, io.ReadWriteCloser, error) {
 			conn:       conn,
 			ctx:        e.ctx,
 			readCh:     make(chan []byte, 100),
-			pingPeriod: e.conf.PingPeriod,
-			pongWait:   e.conf.PongWait,
+			pingPeriod: e.PingPeriod,
+			pongWait:   e.PongWait,
 		}
 
 		// Start background goroutines
 		go rwc.reader()
 		go rwc.pinger()
 
-		label := e.conf.Label
+		label := e.Label
 		if label == "" {
 			label = "websocket"
 		}
@@ -395,25 +384,25 @@ func (e *endpointWebSocket) provide() (string, io.ReadWriteCloser, error) {
 	}
 }
 
-func (e *endpointWebSocket) connect() (*websocket.Conn, error) {
+func (e *EndpointWebSocket) connect() (*websocket.Conn, error) {
 	dialer := &websocket.Dialer{
-		HandshakeTimeout: e.conf.HandshakeTimeout,
+		HandshakeTimeout: e.HandshakeTimeout,
 		ReadBufferSize:   4096,
 		WriteBufferSize:  4096,
-		NetDialContext:   e.conf.NetDialContext,
+		NetDialContext:   e.NetDialContext,
 	}
 
 	// Use HeaderProvider for dynamic headers (e.g., refreshed auth tokens),
 	// falling back to static Headers map.
 	var sourceHeaders map[string]string
-	if e.conf.HeaderProvider != nil {
+	if e.HeaderProvider != nil {
 		var err error
-		sourceHeaders, err = e.conf.HeaderProvider()
+		sourceHeaders, err = e.HeaderProvider()
 		if err != nil {
 			return nil, fmt.Errorf("header provider failed: %w", err)
 		}
 	} else {
-		sourceHeaders = e.conf.Headers
+		sourceHeaders = e.Headers
 	}
 
 	headers := make(map[string][]string)
@@ -421,30 +410,34 @@ func (e *endpointWebSocket) connect() (*websocket.Conn, error) {
 		headers[k] = []string{v}
 	}
 
-	conn, _, err := dialer.DialContext(e.ctx, e.conf.URL, headers)
+	conn, res, err := dialer.DialContext(e.ctx, e.URL, headers)
 	if err != nil {
+		if res != nil {
+			res.Body.Close()
+		}
 		return nil, fmt.Errorf("failed to connect to WebSocket: %w", err)
 	}
+	res.Body.Close()
 
 	return conn, nil
 }
 
 // GetState returns the current connection state
-func (e *endpointWebSocket) GetState() WebSocketState {
+func (e *EndpointWebSocket) GetState() WebSocketState {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.state
 }
 
 // IsHealthy returns true if the connection is currently healthy
-func (e *endpointWebSocket) IsHealthy() bool {
+func (e *EndpointWebSocket) IsHealthy() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.state == WSStateConnected
 }
 
 // GetStats returns connection statistics
-func (e *endpointWebSocket) GetStats() map[string]any {
+func (e *EndpointWebSocket) GetStats() map[string]any {
 	stats := e.retryState.GetStats()
 	stats["state"] = e.GetState().String()
 	stats["last_connect_time"] = e.lastConnectTime
@@ -477,12 +470,11 @@ type webSocketConn struct {
 	writeMu    sync.Mutex // serializes data frame WriteMessage calls only
 	closed     atomic.Bool
 
-	// Statistics
-	bytesRead       int64
-	bytesWritten    int64
-	messagesRead    int64
-	messagesWritten int64
-	messagesDropped int64
+	bytesRead       atomic.Int64
+	bytesWritten    atomic.Int64
+	messagesRead    atomic.Int64
+	messagesWritten atomic.Int64
+	messagesDropped atomic.Int64
 }
 
 // reader continuously reads from WebSocket and forwards to readCh
@@ -502,11 +494,9 @@ func (w *webSocketConn) reader() {
 		return w.conn.WriteControl(websocket.PongMessage, []byte(message), time.Now().Add(10*time.Second))
 	})
 
-	// Set pong handler - handle responses to our pings
-	w.conn.SetReadDeadline(time.Now().Add(w.pongWait))
+	w.conn.SetReadDeadline(time.Now().Add(w.pongWait)) //nolint:errcheck
 	w.conn.SetPongHandler(func(string) error {
-		w.conn.SetReadDeadline(time.Now().Add(w.pongWait))
-		return nil
+		return w.conn.SetReadDeadline(time.Now().Add(w.pongWait))
 	})
 
 	for {
@@ -523,8 +513,8 @@ func (w *webSocketConn) reader() {
 		}
 
 		// Update statistics
-		atomic.AddInt64(&w.messagesRead, 1)
-		atomic.AddInt64(&w.bytesRead, int64(len(data)))
+		w.messagesRead.Add(1)
+		w.bytesRead.Add(int64(len(data)))
 
 		// Only forward binary messages
 		if messageType != websocket.BinaryMessage {
@@ -536,7 +526,7 @@ func (w *webSocketConn) reader() {
 		case <-w.ctx.Done():
 			return
 		default:
-			atomic.AddInt64(&w.messagesDropped, 1)
+			w.messagesDropped.Add(1)
 		}
 	}
 }
@@ -592,7 +582,8 @@ func (w *webSocketConn) Write(p []byte) (n int, err error) {
 	// Without this, a blocked WriteMessage holds writeMu forever. While writeMu no
 	// longer blocks pong responses (control frames bypass it), a stuck write still
 	// wastes resources and delays reconnection.
-	if err := w.conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline)); err != nil {
+	err = w.conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline))
+	if err != nil {
 		return 0, err
 	}
 
@@ -602,8 +593,8 @@ func (w *webSocketConn) Write(p []byte) (n int, err error) {
 	}
 
 	// Update statistics
-	atomic.AddInt64(&w.messagesWritten, 1)
-	atomic.AddInt64(&w.bytesWritten, int64(len(p)))
+	w.messagesWritten.Add(1)
+	w.bytesWritten.Add(int64(len(p)))
 
 	return len(p), nil
 }
@@ -614,7 +605,7 @@ func (w *webSocketConn) Close() error {
 	}
 
 	// Send close control frame (WriteControl is goroutine-safe)
-	w.conn.WriteControl(
+	w.conn.WriteControl( //nolint:errcheck
 		websocket.CloseMessage,
 		websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""),
 		time.Now().Add(time.Second),
@@ -628,12 +619,12 @@ func (w *webSocketConn) Close() error {
 }
 
 // GetStats returns connection statistics
-func (w *webSocketConn) GetStats() map[string]interface{} {
-	return map[string]interface{}{
-		"bytes_read":       atomic.LoadInt64(&w.bytesRead),
-		"bytes_written":    atomic.LoadInt64(&w.bytesWritten),
-		"messages_read":    atomic.LoadInt64(&w.messagesRead),
-		"messages_written": atomic.LoadInt64(&w.messagesWritten),
-		"messages_dropped": atomic.LoadInt64(&w.messagesDropped),
+func (w *webSocketConn) GetStats() map[string]any {
+	return map[string]any{
+		"bytes_read":       w.bytesRead.Load(),
+		"bytes_written":    w.bytesWritten.Load(),
+		"messages_read":    w.messagesRead.Load(),
+		"messages_written": w.messagesWritten.Load(),
+		"messages_dropped": w.messagesDropped.Load(),
 	}
 }

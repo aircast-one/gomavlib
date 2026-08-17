@@ -21,14 +21,14 @@ import (
 // WebTransportLogger interface allows custom logging implementations.
 // If not set, a default stderr logger is used.
 type WebTransportLogger interface {
-	Printf(format string, v ...interface{})
+	Printf(format string, v ...any)
 }
 
 // defaultWTLogger management with thread-safe access
 var (
-	wtLoggerMu      sync.RWMutex
+	wtLoggerMu       sync.RWMutex
 	wtLoggerInitOnce sync.Once
-	wtLogger        WebTransportLogger
+	wtLogger         WebTransportLogger
 )
 
 // getDefaultWTLogger returns the current WebTransport logger with lazy initialization.
@@ -66,7 +66,7 @@ func SetWebTransportLogger(logger WebTransportLogger) {
 // discardLogger discards all log messages
 type discardLogger struct{}
 
-func (discardLogger) Printf(format string, v ...interface{}) {}
+func (discardLogger) Printf(_ string, _ ...any) {}
 
 // Default QUIC configuration values
 const (
@@ -78,6 +78,8 @@ const (
 
 // ErrDatagramTruncated is returned when a received datagram exceeds the buffer size
 var ErrDatagramTruncated = errors.New("datagram truncated: buffer too small")
+
+var _ Endpoint = (*EndpointWebTransport)(nil)
 
 // EndpointWebTransport sets up a WebTransport endpoint with QUIC connection migration.
 // This endpoint survives IP address changes (e.g., cellular handoffs) without losing
@@ -91,9 +93,9 @@ var ErrDatagramTruncated = errors.New("datagram truncated: buffer too small")
 //
 // Example:
 //
-//	node, err := gomavlib.NewNode(gomavlib.NodeConf{
-//	    Endpoints: []gomavlib.EndpointConf{
-//	        gomavlib.EndpointWebTransport{
+//	node := &gomavlib.Node{
+//	    Endpoints: []gomavlib.Endpoint{
+//	        &gomavlib.EndpointWebTransport{
 //	            URL: "https://server.example.com:443/mavlink",
 //	            Headers: map[string]string{
 //	                "Authorization": "Bearer token",
@@ -101,8 +103,8 @@ var ErrDatagramTruncated = errors.New("datagram truncated: buffer too small")
 //	            UseDatagrams: true, // Use unreliable datagrams for lower latency
 //	        },
 //	    },
-//	    ...
-//	})
+//	}
+//	err := node.Initialize()
 type EndpointWebTransport struct {
 	// WebTransport URL to connect to (must be https://)
 	URL string
@@ -152,131 +154,111 @@ type EndpointWebTransport struct {
 	// If nil, uses the package-level default logger.
 	// Set to a custom logger or use SetWebTransportLogger(nil) to disable logging.
 	Logger WebTransportLogger
-}
 
-func (conf EndpointWebTransport) init(node *Node) (Endpoint, error) {
-	if conf.URL == "" {
-		return nil, errors.New("WebTransport URL is required")
-	}
-
-	// Validate URL scheme
-	parsedURL, err := url.Parse(conf.URL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid WebTransport URL: %w", err)
-	}
-	if parsedURL.Scheme != "https" {
-		return nil, errors.New("WebTransport URL must use https:// scheme")
-	}
-
-	// Set defaults
-	if conf.InitialRetryPeriod == 0 {
-		conf.InitialRetryPeriod = 1 * time.Second
-	}
-	if conf.MaxRetryPeriod == 0 {
-		conf.MaxRetryPeriod = 30 * time.Second
-	}
-	if conf.BackoffMultiplier == 0 {
-		conf.BackoffMultiplier = 1.5
-	}
-
-	// Default QUIC config with connection migration enabled
-	if conf.QUICConfig == nil {
-		conf.QUICConfig = &quic.Config{
-			MaxIdleTimeout:                   defaultMaxIdleTimeout,
-			KeepAlivePeriod:                  defaultKeepAlivePeriod,
-			EnableDatagrams:                  conf.UseDatagrams,
-			EnableStreamResetPartialDelivery: true, // Required by webtransport-go v0.10.0
-			Allow0RTT:                        true, // Enable 0-RTT for faster reconnection
-			MaxIncomingStreams:               defaultMaxIncomingStreams,
-			MaxIncomingUniStreams:            defaultMaxIncomingUniStreams,
-		}
-	}
-
-	e := &endpointWebTransport{
-		node: node,
-		conf: conf,
-	}
-	initErr := e.initialize()
-	return e, initErr
-}
-
-type endpointWebTransport struct {
-	node *Node
-	conf EndpointWebTransport
-
+	node      *Node
 	ctx       context.Context
 	cancel    context.CancelFunc
 	terminate chan struct{}
 	mu        sync.Mutex
 
-	// Instance-level logger (never nil after initialization)
 	logger WebTransportLogger
 
-	// Connection state
 	state   ConnectionState
 	session *webtransport.Session
 	dialer  *webtransport.Dialer
 
-	// Reconnection state - uses common retry infrastructure
 	retryState      *RetryState
 	lastConnectTime time.Time
 }
 
-func (e *endpointWebTransport) initialize() error {
+func (e *EndpointWebTransport) init(node *Node) error {
+	if e.URL == "" {
+		return errors.New("WebTransport URL is required")
+	}
+
+	parsedURL, err := url.Parse(e.URL)
+	if err != nil {
+		return fmt.Errorf("invalid WebTransport URL: %w", err)
+	}
+	if parsedURL.Scheme != "https" {
+		return errors.New("WebTransport URL must use https:// scheme")
+	}
+
+	if e.InitialRetryPeriod == 0 {
+		e.InitialRetryPeriod = 1 * time.Second
+	}
+	if e.MaxRetryPeriod == 0 {
+		e.MaxRetryPeriod = 30 * time.Second
+	}
+	if e.BackoffMultiplier == 0 {
+		e.BackoffMultiplier = 1.5
+	}
+
+	if e.QUICConfig == nil {
+		e.QUICConfig = &quic.Config{
+			MaxIdleTimeout:                   defaultMaxIdleTimeout,
+			KeepAlivePeriod:                  defaultKeepAlivePeriod,
+			EnableDatagrams:                  e.UseDatagrams,
+			EnableStreamResetPartialDelivery: true,
+			Allow0RTT:                        true,
+			MaxIncomingStreams:               defaultMaxIncomingStreams,
+			MaxIncomingUniStreams:            defaultMaxIncomingUniStreams,
+		}
+	}
+
+	e.node = node
 	e.ctx, e.cancel = context.WithCancel(context.Background())
 	e.terminate = make(chan struct{})
 
-	// Set logger - use config logger, fall back to default
-	if e.conf.Logger != nil {
-		e.logger = e.conf.Logger
+	if e.Logger != nil {
+		e.logger = e.Logger
 	} else {
 		e.logger = getDefaultWTLogger()
 	}
 
 	e.retryState = NewRetryState(RetryPolicy{
-		InitialRetryPeriod:   e.conf.InitialRetryPeriod,
-		MaxRetryPeriod:       e.conf.MaxRetryPeriod,
-		BackoffMultiplier:    e.conf.BackoffMultiplier,
-		MaxReconnectAttempts: e.conf.MaxReconnectAttempts,
+		InitialRetryPeriod:   e.InitialRetryPeriod,
+		MaxRetryPeriod:       e.MaxRetryPeriod,
+		BackoffMultiplier:    e.BackoffMultiplier,
+		MaxReconnectAttempts: e.MaxReconnectAttempts,
 	})
 	e.setState(ConnStateDisconnected, nil)
 
-	// Create WebTransport dialer
 	e.dialer = &webtransport.Dialer{
-		TLSClientConfig: e.conf.TLSConfig,
-		QUICConfig:      e.conf.QUICConfig,
-		DialAddr:        e.conf.DialAddr,
+		TLSClientConfig: e.TLSConfig,
+		QUICConfig:      e.QUICConfig,
+		DialAddr:        e.DialAddr,
 	}
 
 	return nil
 }
 
-func (e *endpointWebTransport) close() {
+func (e *EndpointWebTransport) isDatagram() bool {
+	return false
+}
+
+func (e *EndpointWebTransport) close() {
 	e.cancel()
 	close(e.terminate)
 
 	e.mu.Lock()
 	if e.session != nil {
-		e.session.CloseWithError(0, "endpoint closed")
+		e.session.CloseWithError(0, "endpoint closed") //nolint:errcheck
 	}
 	e.mu.Unlock()
 }
 
-func (e *endpointWebTransport) isEndpoint() {}
+func (e *EndpointWebTransport) isEndpoint() {}
 
-func (e *endpointWebTransport) Conf() EndpointConf {
-	return e.conf
-}
-
-func (e *endpointWebTransport) oneChannelAtAtime() bool {
+func (e *EndpointWebTransport) oneChannelAtAtime() bool {
 	return true
 }
 
-func (e *endpointWebTransport) setState(newState ConnectionState, err error) {
+func (e *EndpointWebTransport) setState(newState ConnectionState, err error) {
 	e.mu.Lock()
 	oldState := e.state
 	e.state = newState
-	callback := e.conf.OnStateChange
+	callback := e.OnStateChange
 	e.mu.Unlock()
 
 	if callback != nil && oldState != newState {
@@ -284,7 +266,7 @@ func (e *endpointWebTransport) setState(newState ConnectionState, err error) {
 	}
 }
 
-func (e *endpointWebTransport) provide() (string, io.ReadWriteCloser, error) {
+func (e *EndpointWebTransport) provide() (string, io.ReadWriteCloser, error) {
 	for {
 		select {
 		case <-e.terminate:
@@ -317,7 +299,7 @@ func (e *endpointWebTransport) provide() (string, io.ReadWriteCloser, error) {
 			shouldContinue := e.retryState.RecordError()
 			stats := e.retryState.GetStats()
 			e.logger.Printf("event=connect_failed url=%s attempt=%d consecutive_errors=%v retry_period_ms=%v error=%v",
-				e.conf.URL, attempts, stats["consecutive_errors"], stats["current_retry_period"].(time.Duration).Milliseconds(), err)
+				e.URL, attempts, stats["consecutive_errors"], stats["current_retry_period"].(time.Duration).Milliseconds(), err)
 
 			if !shouldContinue {
 				e.setState(ConnStateDisconnected, err)
@@ -336,9 +318,9 @@ func (e *endpointWebTransport) provide() (string, io.ReadWriteCloser, error) {
 		e.setState(ConnStateConnected, nil)
 
 		e.logger.Printf("event=connect_success url=%s attempt=%d use_datagrams=%v",
-			e.conf.URL, attempts, e.conf.UseDatagrams)
+			e.URL, attempts, e.UseDatagrams)
 
-		label := e.conf.Label
+		label := e.Label
 		if label == "" {
 			label = "webtransport"
 		}
@@ -347,18 +329,18 @@ func (e *endpointWebTransport) provide() (string, io.ReadWriteCloser, error) {
 	}
 }
 
-func (e *endpointWebTransport) connect() (io.ReadWriteCloser, error) {
+func (e *EndpointWebTransport) connect() (io.ReadWriteCloser, error) {
 	// Use HeaderProvider for dynamic headers (e.g., refreshed auth tokens),
 	// falling back to static Headers map.
 	var sourceHeaders map[string]string
-	if e.conf.HeaderProvider != nil {
+	if e.HeaderProvider != nil {
 		var err error
-		sourceHeaders, err = e.conf.HeaderProvider()
+		sourceHeaders, err = e.HeaderProvider()
 		if err != nil {
 			return nil, fmt.Errorf("header provider failed: %w", err)
 		}
 	} else {
-		sourceHeaders = e.conf.Headers
+		sourceHeaders = e.Headers
 	}
 
 	header := http.Header{}
@@ -367,18 +349,22 @@ func (e *endpointWebTransport) connect() (io.ReadWriteCloser, error) {
 	}
 
 	// Dial WebTransport session
-	_, session, err := e.dialer.Dial(e.ctx, e.conf.URL, header)
+	res, session, err := e.dialer.Dial(e.ctx, e.URL, header)
 	if err != nil {
+		if res != nil {
+			res.Body.Close()
+		}
 		return nil, fmt.Errorf("failed to dial WebTransport: %w", err)
 	}
+	res.Body.Close()
 
 	e.mu.Lock()
 	e.session = session
 	e.mu.Unlock()
 
-	if e.conf.UseDatagrams {
+	if e.UseDatagrams {
 		// Use unreliable datagrams for MAVLink (lower latency)
-		e.logger.Printf("event=datagram_conn_open url=%s use_datagrams=true", e.conf.URL)
+		e.logger.Printf("event=datagram_conn_open url=%s use_datagrams=true", e.URL)
 		return &webTransportDatagramConn{
 			session:   session,
 			ctx:       e.ctx,
@@ -390,7 +376,7 @@ func (e *endpointWebTransport) connect() (io.ReadWriteCloser, error) {
 	// Use reliable bidirectional stream
 	stream, err := session.OpenStreamSync(e.ctx)
 	if err != nil {
-		session.CloseWithError(0, "failed to open stream")
+		session.CloseWithError(0, "failed to open stream") //nolint:errcheck
 		return nil, fmt.Errorf("failed to open stream: %w", err)
 	}
 
@@ -401,7 +387,7 @@ func (e *endpointWebTransport) connect() (io.ReadWriteCloser, error) {
 }
 
 // GetState returns the current connection state
-func (e *endpointWebTransport) GetState() ConnectionState {
+func (e *EndpointWebTransport) GetState() ConnectionState {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.state
@@ -416,7 +402,7 @@ type WebTransportStats struct {
 }
 
 // GetStats returns connection statistics
-func (e *endpointWebTransport) GetStats() WebTransportStats {
+func (e *EndpointWebTransport) GetStats() WebTransportStats {
 	e.mu.Lock()
 	lastConnect := e.lastConnectTime
 	e.mu.Unlock()
@@ -531,7 +517,8 @@ func (c *webTransportDatagramConn) Close() error {
 
 	// Wide event: Log connection lifecycle summary
 	duration := time.Since(c.startTime)
-	c.logger.Printf("event=datagram_conn_close duration_ms=%d datagrams_read=%d datagrams_written=%d bytes_read=%d bytes_written=%d read_errors=%d write_errors=%d",
+	c.logger.Printf("event=datagram_conn_close duration_ms=%d datagrams_read=%d datagrams_written=%d "+
+		"bytes_read=%d bytes_written=%d read_errors=%d write_errors=%d",
 		duration.Milliseconds(),
 		c.datagramsRead.Load(),
 		c.datagramsWritten.Load(),

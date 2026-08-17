@@ -3,7 +3,7 @@
 package all
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/storm32"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/storm32"
 )
 
 // Information about the shot operation.

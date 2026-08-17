@@ -59,13 +59,12 @@ type RetryState struct {
 	policy RetryPolicy
 
 	// Mutex protects non-atomic fields (currentRetryPeriod, circuitBreakerOpenAt)
-	mu                 sync.Mutex
-	currentRetryPeriod time.Duration
+	mu                   sync.Mutex
+	currentRetryPeriod   time.Duration
 	circuitBreakerOpenAt time.Time
 
-	// Atomic counters for high-frequency operations
-	reconnectAttempts int32
-	consecutiveErrors int32
+	reconnectAttempts atomic.Int32
+	consecutiveErrors atomic.Int32
 }
 
 // NewRetryState creates a new retry state with the given policy
@@ -83,7 +82,7 @@ func NewRetryState(policy RetryPolicy) *RetryState {
 // After waiting, the backoff period is increased for the next potential retry.
 // Thread-safe.
 func (s *RetryState) BeforeAttempt() (shouldWait bool, waitDuration time.Duration) {
-	attempts := atomic.LoadInt32(&s.reconnectAttempts)
+	attempts := s.reconnectAttempts.Load()
 	if attempts > 0 {
 		s.mu.Lock()
 		// Return current wait period
@@ -102,13 +101,13 @@ func (s *RetryState) BeforeAttempt() (shouldWait bool, waitDuration time.Duratio
 
 // RecordAttempt should be called when starting a connection attempt
 func (s *RetryState) RecordAttempt() {
-	atomic.AddInt32(&s.reconnectAttempts, 1)
+	s.reconnectAttempts.Add(1)
 }
 
 // RecordSuccess should be called when a connection succeeds.
 // Thread-safe.
 func (s *RetryState) RecordSuccess() {
-	atomic.StoreInt32(&s.consecutiveErrors, 0)
+	s.consecutiveErrors.Store(0)
 	s.mu.Lock()
 	s.currentRetryPeriod = s.policy.InitialRetryPeriod
 	s.circuitBreakerOpenAt = time.Time{} // Close circuit breaker
@@ -118,7 +117,7 @@ func (s *RetryState) RecordSuccess() {
 // RecordError should be called when a connection fails.
 // Returns true if we should continue retrying.
 func (s *RetryState) RecordError() bool {
-	consecutiveErrors := atomic.AddInt32(&s.consecutiveErrors, 1)
+	consecutiveErrors := s.consecutiveErrors.Add(1)
 
 	// Check circuit breaker (if configured)
 	if s.policy.MaxConsecutiveErrors > 0 && int(consecutiveErrors) >= s.policy.MaxConsecutiveErrors {
@@ -128,7 +127,7 @@ func (s *RetryState) RecordError() bool {
 
 	// Check max attempts
 	if s.policy.MaxReconnectAttempts > 0 {
-		attempts := atomic.LoadInt32(&s.reconnectAttempts)
+		attempts := s.reconnectAttempts.Load()
 		if int(attempts) >= s.policy.MaxReconnectAttempts {
 			return false
 		}
@@ -199,8 +198,8 @@ func (s *RetryState) GetStats() map[string]any {
 	s.mu.Unlock()
 
 	return map[string]any{
-		"reconnect_attempts":     atomic.LoadInt32(&s.reconnectAttempts),
-		"consecutive_errors":     atomic.LoadInt32(&s.consecutiveErrors),
+		"reconnect_attempts":     s.reconnectAttempts.Load(),
+		"consecutive_errors":     s.consecutiveErrors.Load(),
 		"current_retry_period":   currentPeriod,
 		"max_reconnect_attempts": s.policy.MaxReconnectAttempts,
 		"circuit_breaker_open":   s.IsCircuitBreakerOpen(),
@@ -209,10 +208,10 @@ func (s *RetryState) GetStats() map[string]any {
 
 // ReconnectAttempts returns the current reconnect attempt count
 func (s *RetryState) ReconnectAttempts() int32 {
-	return atomic.LoadInt32(&s.reconnectAttempts)
+	return s.reconnectAttempts.Load()
 }
 
 // ConsecutiveErrors returns the current consecutive error count
 func (s *RetryState) ConsecutiveErrors() int32 {
-	return atomic.LoadInt32(&s.consecutiveErrors)
+	return s.consecutiveErrors.Load()
 }

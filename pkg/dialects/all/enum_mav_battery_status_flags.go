@@ -3,7 +3,7 @@
 package all
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/development"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/development"
 )
 
 // Battery status flags for fault, health and state indication.
@@ -51,8 +51,6 @@ const (
 	MAV_BATTERY_STATUS_FLAGS_FAULT_OVER_TEMPERATURE MAV_BATTERY_STATUS_FLAGS = development.MAV_BATTERY_STATUS_FLAGS_FAULT_OVER_TEMPERATURE
 	// Under-temperature fault.
 	MAV_BATTERY_STATUS_FLAGS_FAULT_UNDER_TEMPERATURE MAV_BATTERY_STATUS_FLAGS = development.MAV_BATTERY_STATUS_FLAGS_FAULT_UNDER_TEMPERATURE
-	// Circular fence area centered on home. The vehicle must stay inside this area. If home is moved, the fence moves.
-	MAV_CMD_NAV_FENCE_HOME_CIRCLE_INCLUSION MAV_BATTERY_STATUS_FLAGS = development.MAV_CMD_NAV_FENCE_HOME_CIRCLE_INCLUSION
 	// Over-current fault.
 	MAV_BATTERY_STATUS_FLAGS_FAULT_OVER_CURRENT MAV_BATTERY_STATUS_FLAGS = development.MAV_BATTERY_STATUS_FLAGS_FAULT_OVER_CURRENT
 	// Short circuit event detected.

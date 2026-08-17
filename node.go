@@ -8,7 +8,7 @@ to communicate with unmanned ground vehicles (UGV) and unmanned aerial vehicles
 (UAV, drones, quadcopters, multirotors). It is supported by the most common
 open-source flight controllers (Ardupilot and PX4).
 
-Examples are available at https://github.com/bluenviron/gomavlib/tree/main/examples
+Examples are available at https://github.com/aircast-one/gomavlib/tree/main/examples
 */
 package gomavlib
 
@@ -18,9 +18,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bluenviron/gomavlib/v3/pkg/dialect"
-	"github.com/bluenviron/gomavlib/v3/pkg/frame"
-	"github.com/bluenviron/gomavlib/v3/pkg/message"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialect"
+	"github.com/aircast-one/gomavlib/v4/pkg/frame"
+	"github.com/aircast-one/gomavlib/v4/pkg/message"
 )
 
 var (
@@ -30,17 +30,17 @@ var (
 
 type writeToReq struct {
 	ch   *Channel
-	what interface{}
+	what any
 }
 
 type writeExceptReq struct {
 	except *Channel
-	what   interface{}
+	what   any
 }
 
 type addEndpointReq struct {
-	conf   EndpointConf
-	result chan error
+	endpoint Endpoint
+	result   chan error
 }
 
 type removeEndpointReq struct {
@@ -48,93 +48,11 @@ type removeEndpointReq struct {
 	result   chan error
 }
 
-// NodeConf allows to configure a Node.
-//
-// Deprecated: configuration has been moved inside Node.
-type NodeConf struct {
-	// endpoints with which this node will
-	// communicate. Each endpoint contains zero or more channels
-	Endpoints []EndpointConf
-
-	// (optional) dialect which contains the messages that will be encoded and decoded.
-	// If not provided, messages are decoded in the MessageRaw struct.
-	Dialect *dialect.Dialect
-
-	// (optional) secret key used to validate incoming frames.
-	// Non signed frames are discarded, as well as frames with a version < 2.0.
-	InKey *frame.V2Key
-
-	// Mavlink version used to encode messages. See Version
-	// for the available options.
-	OutVersion Version
-	// system id, added to every outgoing frame and used to identify this
-	// node in the network.
-	OutSystemID byte
-	// (optional) component id, added to every outgoing frame, defaults to 1.
-	OutComponentID byte
-	// (optional) secret key used to sign outgoing frames.
-	// This feature requires a version >= 2.0.
-	OutKey *frame.V2Key
-
-	// (optional) disables the periodic sending of heartbeats to open channels.
-	HeartbeatDisable bool
-	// (optional) period between heartbeats. It defaults to 5 seconds.
-	HeartbeatPeriod time.Duration
-	// (optional) system type advertised by heartbeats.
-	// It defaults to MAV_TYPE_GCS
-	HeartbeatSystemType int
-	// (optional) autopilot type advertised by heartbeats.
-	// It defaults to MAV_AUTOPILOT_GENERIC
-	HeartbeatAutopilotType int
-
-	// (optional) automatically request streams to detected Ardupilot devices,
-	// that need an explicit request in order to emit telemetry stream.
-	StreamRequestEnable bool
-	// (optional) requested stream frequency in Hz. It defaults to 4.
-	StreamRequestFrequency int
-
-	// (optional) read timeout.
-	// It defaults to 10 seconds.
-	ReadTimeout time.Duration
-	// (optional) write timeout.
-	// It defaults to 10 seconds.
-	WriteTimeout time.Duration
-	// (optional) timeout before closing idle connections.
-	// It defaults to 60 seconds.
-	IdleTimeout time.Duration
-}
-
-// NewNode allocates a Node. See NodeConf for the options.
-//
-// Deprecated: replaced by Node.Initialize().
-func NewNode(conf NodeConf) (*Node, error) {
-	n := &Node{
-		Endpoints:              conf.Endpoints,
-		Dialect:                conf.Dialect,
-		InKey:                  conf.InKey,
-		OutVersion:             conf.OutVersion,
-		OutSystemID:            conf.OutSystemID,
-		OutComponentID:         conf.OutComponentID,
-		OutKey:                 conf.OutKey,
-		HeartbeatDisable:       conf.HeartbeatDisable,
-		HeartbeatPeriod:        conf.HeartbeatPeriod,
-		HeartbeatSystemType:    conf.HeartbeatSystemType,
-		HeartbeatAutopilotType: conf.HeartbeatAutopilotType,
-		StreamRequestEnable:    conf.StreamRequestEnable,
-		StreamRequestFrequency: conf.StreamRequestFrequency,
-		ReadTimeout:            conf.ReadTimeout,
-		WriteTimeout:           conf.WriteTimeout,
-		IdleTimeout:            conf.IdleTimeout,
-	}
-	err := n.Initialize()
-	return n, err
-}
-
 // Node is a high-level Mavlink encoder and decoder that works with endpoints.
 type Node struct {
 	// endpoints with which this node will
 	// communicate. Each endpoint contains zero or more channels
-	Endpoints []EndpointConf
+	Endpoints []Endpoint
 
 	// (optional) dialect which contains the messages that will be encoded and decoded.
 	// If not provided, messages are decoded in the MessageRaw struct.
@@ -195,15 +113,15 @@ type Node struct {
 	nodeStreamRequest *nodeStreamRequest
 
 	// in
-	chNewChannel      chan *Channel
-	chCloseChannel    chan *Channel
-	chWriteTo         chan writeToReq
-	chWriteAll        chan interface{}
-	chWriteExcept     chan writeExceptReq
-	chAddEndpoint     chan addEndpointReq
-	chRemoveEndpoint  chan removeEndpointReq
-	terminate         chan struct{}
-	endpointsMutex    sync.RWMutex
+	chNewChannel     chan *Channel
+	chCloseChannel   chan *Channel
+	chWriteTo        chan writeToReq
+	chWriteAll       chan any
+	chWriteExcept    chan writeExceptReq
+	chAddEndpoint    chan addEndpointReq
+	chRemoveEndpoint chan removeEndpointReq
+	terminate        chan struct{}
+	endpointsMutex   sync.RWMutex
 
 	// out
 	chEvent chan Event
@@ -267,7 +185,7 @@ func (n *Node) Initialize() error {
 	n.chNewChannel = make(chan *Channel)
 	n.chCloseChannel = make(chan *Channel)
 	n.chWriteTo = make(chan writeToReq)
-	n.chWriteAll = make(chan interface{})
+	n.chWriteAll = make(chan any)
 	n.chWriteExcept = make(chan writeExceptReq)
 	n.chAddEndpoint = make(chan addEndpointReq)
 	n.chRemoveEndpoint = make(chan removeEndpointReq)
@@ -281,9 +199,8 @@ func (n *Node) Initialize() error {
 		}
 	}
 
-	// endpoints
-	for _, conf := range n.Endpoints {
-		endpoint, err := conf.init(n)
+	for _, e := range n.Endpoints {
+		err := e.init(n)
 		if err != nil {
 			closeExisting()
 			return err
@@ -291,7 +208,7 @@ func (n *Node) Initialize() error {
 
 		ca := &channelProvider{
 			node:     n,
-			endpoint: endpoint,
+			endpoint: e,
 		}
 		err = ca.initialize()
 		if err != nil {
@@ -381,7 +298,7 @@ outer:
 			}
 
 		case req := <-n.chAddEndpoint:
-			req.result <- n.addEndpoint(req.conf)
+			req.result <- n.addEndpoint(req.endpoint)
 
 		case req := <-n.chRemoveEndpoint:
 			req.result <- n.removeEndpoint(req.endpoint)
@@ -622,10 +539,10 @@ func (n *Node) closeChannel(ch *Channel) {
 // AddEndpoint adds a new endpoint to the node at runtime.
 // The endpoint will be initialized and started immediately.
 // Returns an error if initialization fails.
-func (n *Node) AddEndpoint(conf EndpointConf) error {
+func (n *Node) AddEndpoint(endpoint Endpoint) error {
 	result := make(chan error)
 	select {
-	case n.chAddEndpoint <- addEndpointReq{conf: conf, result: result}:
+	case n.chAddEndpoint <- addEndpointReq{endpoint: endpoint, result: result}:
 		return <-result
 	case <-n.terminate:
 		return errTerminated
@@ -658,15 +575,12 @@ func (n *Node) GetEndpoints() []Endpoint {
 	return endpoints
 }
 
-// addEndpoint is the internal implementation that runs in the node's goroutine
-func (n *Node) addEndpoint(conf EndpointConf) error {
-	// Initialize the endpoint
-	endpoint, err := conf.init(n)
+func (n *Node) addEndpoint(endpoint Endpoint) error {
+	err := endpoint.init(n)
 	if err != nil {
 		return fmt.Errorf("failed to initialize endpoint: %w", err)
 	}
 
-	// Create channel provider
 	cp := &channelProvider{
 		node:     n,
 		endpoint: endpoint,

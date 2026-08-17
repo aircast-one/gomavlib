@@ -3,7 +3,7 @@
 package uavionix
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/common"
 )
 
 // Enumeration of possible mount operation modes. This message is used by obsolete/deprecated gimbal messages.
@@ -24,4 +24,6 @@ const (
 	MAV_MOUNT_MODE_SYSID_TARGET MAV_MOUNT_MODE = common.MAV_MOUNT_MODE_SYSID_TARGET
 	// Gimbal tracks home position
 	MAV_MOUNT_MODE_HOME_LOCATION MAV_MOUNT_MODE = common.MAV_MOUNT_MODE_HOME_LOCATION
+	// Gimbal tracks next waypoint location with offset
+	MAV_MOUNT_MODE_WPNEXT_OFFSET MAV_MOUNT_MODE = common.MAV_MOUNT_MODE_WPNEXT_OFFSET
 )

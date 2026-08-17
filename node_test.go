@@ -7,9 +7,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bluenviron/gomavlib/v3/pkg/dialect"
-	"github.com/bluenviron/gomavlib/v3/pkg/frame"
-	"github.com/bluenviron/gomavlib/v3/pkg/message"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialect"
+	"github.com/aircast-one/gomavlib/v4/pkg/frame"
+	"github.com/aircast-one/gomavlib/v4/pkg/message"
 )
 
 type (
@@ -59,40 +59,38 @@ var testMessage = &MessageHeartbeat{
 }
 
 func TestNodeError(t *testing.T) {
-	_, err := NewNode(NodeConf{
+	err := (&Node{
 		Dialect:     testDialect,
 		OutVersion:  V2,
 		OutSystemID: 11,
-		Endpoints: []EndpointConf{
-			EndpointUDPServer{"127.0.0.1:5600"},
-			EndpointUDPServer{"127.0.0.1:5600"},
+		Endpoints: []Endpoint{
+			&EndpointUDPServer{Address: "127.0.0.1:5600"},
+			&EndpointUDPServer{Address: "127.0.0.1:5600"},
 		},
 		HeartbeatDisable: true,
-	})
+	}).Initialize()
 	require.Error(t, err)
 }
 
 func TestNodeCloseInLoop(t *testing.T) {
-	node1, err := NewNode(NodeConf{
-		Dialect:     testDialect,
-		OutVersion:  V2,
-		OutSystemID: 11,
-		Endpoints: []EndpointConf{
-			EndpointUDPServer{"127.0.0.1:5600"},
-		},
+	node1 := &Node{
+		Dialect:          testDialect,
+		OutVersion:       V2,
+		OutSystemID:      11,
+		Endpoints:        []Endpoint{&EndpointUDPServer{Address: "127.0.0.1:5600"}},
 		HeartbeatDisable: true,
-	})
+	}
+	err := node1.Initialize()
 	require.NoError(t, err)
 
-	node2, err := NewNode(NodeConf{
-		Dialect:     testDialect,
-		OutVersion:  V2,
-		OutSystemID: 11,
-		Endpoints: []EndpointConf{
-			EndpointUDPClient{"127.0.0.1:5600"},
-		},
+	node2 := &Node{
+		Dialect:          testDialect,
+		OutVersion:       V2,
+		OutSystemID:      11,
+		Endpoints:        []Endpoint{&EndpointUDPClient{Address: "127.0.0.1:5600"}},
 		HeartbeatDisable: true,
-	})
+	}
+	err = node2.Initialize()
 	require.NoError(t, err)
 	defer node2.Close()
 
@@ -114,32 +112,29 @@ func TestNodeCloseInLoop(t *testing.T) {
 func TestNodeWriteAll(t *testing.T) {
 	for _, ca := range []string{"message", "frame"} {
 		t.Run(ca, func(t *testing.T) {
-			server, err := NewNode(NodeConf{
-				Dialect:     testDialect,
-				OutVersion:  V2,
-				OutSystemID: 11,
-				Endpoints: []EndpointConf{
-					EndpointTCPServer{"127.0.0.1:5600"},
-				},
+			server := &Node{
+				Dialect:          testDialect,
+				OutVersion:       V2,
+				OutSystemID:      11,
+				Endpoints:        []Endpoint{&EndpointTCPServer{Address: "127.0.0.1:5600"}},
 				HeartbeatDisable: true,
-			})
+			}
+			err := server.Initialize()
 			require.NoError(t, err)
 			defer server.Close()
 
 			var wg sync.WaitGroup
 			wg.Add(5)
 
-			for i := 0; i < 5; i++ {
-				var client *Node
-				client, err = NewNode(NodeConf{
-					Dialect:     testDialect,
-					OutVersion:  V2,
-					OutSystemID: 11,
-					Endpoints: []EndpointConf{
-						EndpointTCPClient{"127.0.0.1:5600"},
-					},
+			for range 5 {
+				client := &Node{
+					Dialect:          testDialect,
+					OutVersion:       V2,
+					OutSystemID:      11,
+					Endpoints:        []Endpoint{&EndpointTCPClient{Address: "127.0.0.1:5600"}},
 					HeartbeatDisable: true,
-				})
+				}
+				err = client.Initialize()
 				require.NoError(t, err)
 				defer client.Close()
 
@@ -193,32 +188,29 @@ func TestNodeWriteAll(t *testing.T) {
 func TestNodeWriteExcept(t *testing.T) {
 	for _, ca := range []string{"message", "frame"} {
 		t.Run(ca, func(t *testing.T) {
-			server, err := NewNode(NodeConf{
-				Dialect:     testDialect,
-				OutVersion:  V2,
-				OutSystemID: 11,
-				Endpoints: []EndpointConf{
-					EndpointTCPServer{"127.0.0.1:5600"},
-				},
+			server := &Node{
+				Dialect:          testDialect,
+				OutVersion:       V2,
+				OutSystemID:      11,
+				Endpoints:        []Endpoint{&EndpointTCPServer{Address: "127.0.0.1:5600"}},
 				HeartbeatDisable: true,
-			})
+			}
+			err := server.Initialize()
 			require.NoError(t, err)
 			defer server.Close()
 
 			var wg sync.WaitGroup
 			wg.Add(4)
 
-			for i := 0; i < 5; i++ {
-				var client *Node
-				client, err = NewNode(NodeConf{
-					Dialect:     testDialect,
-					OutVersion:  V2,
-					OutSystemID: 11,
-					Endpoints: []EndpointConf{
-						EndpointTCPClient{"127.0.0.1:5600"},
-					},
+			for range 5 {
+				client := &Node{
+					Dialect:          testDialect,
+					OutVersion:       V2,
+					OutSystemID:      11,
+					Endpoints:        []Endpoint{&EndpointTCPClient{Address: "127.0.0.1:5600"}},
 					HeartbeatDisable: true,
-				})
+				}
+				err = client.Initialize()
 				require.NoError(t, err)
 				defer client.Close()
 
@@ -276,31 +268,28 @@ func TestNodeWriteExcept(t *testing.T) {
 func TestNodeWriteTo(t *testing.T) {
 	for _, ca := range []string{"message", "frame"} {
 		t.Run(ca, func(t *testing.T) {
-			server, err := NewNode(NodeConf{
-				Dialect:     testDialect,
-				OutVersion:  V2,
-				OutSystemID: 11,
-				Endpoints: []EndpointConf{
-					EndpointTCPServer{"127.0.0.1:5600"},
-				},
+			server := &Node{
+				Dialect:          testDialect,
+				OutVersion:       V2,
+				OutSystemID:      11,
+				Endpoints:        []Endpoint{&EndpointTCPServer{Address: "127.0.0.1:5600"}},
 				HeartbeatDisable: true,
-			})
+			}
+			err := server.Initialize()
 			require.NoError(t, err)
 			defer server.Close()
 
 			recv := make(chan struct{})
 
-			for i := 0; i < 5; i++ {
-				var client *Node
-				client, err = NewNode(NodeConf{
-					Dialect:     testDialect,
-					OutVersion:  V2,
-					OutSystemID: 11,
-					Endpoints: []EndpointConf{
-						EndpointTCPClient{"127.0.0.1:5600"},
-					},
+			for range 5 {
+				client := &Node{
+					Dialect:          testDialect,
+					OutVersion:       V2,
+					OutSystemID:      11,
+					Endpoints:        []Endpoint{&EndpointTCPClient{Address: "127.0.0.1:5600"}},
 					HeartbeatDisable: true,
-				})
+				}
+				err = client.Initialize()
 				require.NoError(t, err)
 				defer client.Close()
 
@@ -356,27 +345,25 @@ func TestNodeWriteTo(t *testing.T) {
 }
 
 func TestNodeWriteMessageInLoop(t *testing.T) {
-	node1, err := NewNode(NodeConf{
-		Dialect:     testDialect,
-		OutVersion:  V2,
-		OutSystemID: 11,
-		Endpoints: []EndpointConf{
-			EndpointUDPServer{"127.0.0.1:5600"},
-		},
+	node1 := &Node{
+		Dialect:          testDialect,
+		OutVersion:       V2,
+		OutSystemID:      11,
+		Endpoints:        []Endpoint{&EndpointUDPServer{Address: "127.0.0.1:5600"}},
 		HeartbeatDisable: true,
-	})
+	}
+	err := node1.Initialize()
 	require.NoError(t, err)
 	defer node1.Close()
 
-	node2, err := NewNode(NodeConf{
-		Dialect:     testDialect,
-		OutVersion:  V2,
-		OutSystemID: 11,
-		Endpoints: []EndpointConf{
-			EndpointUDPClient{"127.0.0.1:5600"},
-		},
+	node2 := &Node{
+		Dialect:          testDialect,
+		OutVersion:       V2,
+		OutSystemID:      11,
+		Endpoints:        []Endpoint{&EndpointUDPClient{Address: "127.0.0.1:5600"}},
 		HeartbeatDisable: true,
-	})
+	}
+	err = node2.Initialize()
 	require.NoError(t, err)
 	defer node2.Close()
 
@@ -390,7 +377,7 @@ func TestNodeWriteMessageInLoop(t *testing.T) {
 
 	for evt := range node1.Events() {
 		if _, ok := evt.(*EventChannelOpen); ok {
-			for i := 0; i < 10; i++ {
+			for range 10 {
 				err = node1.WriteMessageAll(testMessage)
 				require.NoError(t, err)
 			}
@@ -403,31 +390,29 @@ func TestNodeSignature(t *testing.T) {
 	key1 := frame.NewV2Key(bytes.Repeat([]byte("\x4F"), 32))
 	key2 := frame.NewV2Key(bytes.Repeat([]byte("\xA8"), 32))
 
-	node1, err := NewNode(NodeConf{
-		Dialect: testDialect,
-		Endpoints: []EndpointConf{
-			EndpointUDPServer{"127.0.0.1:5600"},
-		},
+	node1 := &Node{
+		Dialect:          testDialect,
+		Endpoints:        []Endpoint{&EndpointUDPServer{Address: "127.0.0.1:5600"}},
 		HeartbeatDisable: true,
 		InKey:            key2,
 		OutVersion:       V2,
 		OutSystemID:      10,
 		OutKey:           key1,
-	})
+	}
+	err := node1.Initialize()
 	require.NoError(t, err)
 	defer node1.Close()
 
-	node2, err := NewNode(NodeConf{
-		Dialect: testDialect,
-		Endpoints: []EndpointConf{
-			EndpointUDPClient{"127.0.0.1:5600"},
-		},
+	node2 := &Node{
+		Dialect:          testDialect,
+		Endpoints:        []Endpoint{&EndpointUDPClient{Address: "127.0.0.1:5600"}},
 		HeartbeatDisable: true,
 		InKey:            key1,
 		OutVersion:       V2,
 		OutSystemID:      11,
 		OutKey:           key2,
-	})
+	}
+	err = node2.Initialize()
 	require.NoError(t, err)
 	defer node2.Close()
 
@@ -460,40 +445,39 @@ func TestNodeSignature(t *testing.T) {
 }
 
 func TestNodeRoute(t *testing.T) {
-	node1, err := NewNode(NodeConf{
-		Dialect:     testDialect,
-		OutVersion:  V2,
-		OutSystemID: 10,
-		Endpoints: []EndpointConf{
-			EndpointUDPClient{"127.0.0.1:5600"},
-		},
+	node1 := &Node{
+		Dialect:          testDialect,
+		OutVersion:       V2,
+		OutSystemID:      10,
+		Endpoints:        []Endpoint{&EndpointUDPClient{Address: "127.0.0.1:5600"}},
 		HeartbeatDisable: true,
-	})
+	}
+	err := node1.Initialize()
 	require.NoError(t, err)
 	defer node1.Close()
 
-	node2, err := NewNode(NodeConf{
+	node2 := &Node{
 		Dialect:     testDialect,
 		OutVersion:  V2,
 		OutSystemID: 11,
-		Endpoints: []EndpointConf{
-			EndpointUDPServer{"127.0.0.1:5600"},
-			EndpointUDPClient{"127.0.0.1:5601"},
+		Endpoints: []Endpoint{
+			&EndpointUDPServer{Address: "127.0.0.1:5600"},
+			&EndpointUDPClient{Address: "127.0.0.1:5601"},
 		},
 		HeartbeatDisable: true,
-	})
+	}
+	err = node2.Initialize()
 	require.NoError(t, err)
 	defer node2.Close()
 
-	node3, err := NewNode(NodeConf{
-		Dialect:     testDialect,
-		OutVersion:  V2,
-		OutSystemID: 12,
-		Endpoints: []EndpointConf{
-			EndpointUDPServer{"127.0.0.1:5601"},
-		},
+	node3 := &Node{
+		Dialect:          testDialect,
+		OutVersion:       V2,
+		OutSystemID:      12,
+		Endpoints:        []Endpoint{&EndpointUDPServer{Address: "127.0.0.1:5601"}},
 		HeartbeatDisable: true,
-	})
+	}
+	err = node3.Initialize()
 	require.NoError(t, err)
 	defer node3.Close()
 
@@ -537,29 +521,27 @@ func TestNodeRoute(t *testing.T) {
 func TestNodeFixFrame(t *testing.T) {
 	key := frame.NewV2Key(bytes.Repeat([]byte("\xB2"), 32))
 
-	node1, err := NewNode(NodeConf{
-		Dialect: testDialect,
-		Endpoints: []EndpointConf{
-			EndpointUDPServer{"127.0.0.1:5600"},
-		},
+	node1 := &Node{
+		Dialect:          testDialect,
+		Endpoints:        []Endpoint{&EndpointUDPServer{Address: "127.0.0.1:5600"}},
 		HeartbeatDisable: true,
 		InKey:            key,
 		OutVersion:       V2,
 		OutSystemID:      10,
-	})
+	}
+	err := node1.Initialize()
 	require.NoError(t, err)
 	defer node1.Close()
 
-	node2, err := NewNode(NodeConf{
-		Dialect: testDialect,
-		Endpoints: []EndpointConf{
-			EndpointUDPClient{"127.0.0.1:5600"},
-		},
+	node2 := &Node{
+		Dialect:          testDialect,
+		Endpoints:        []Endpoint{&EndpointUDPClient{Address: "127.0.0.1:5600"}},
 		HeartbeatDisable: true,
 		OutVersion:       V2,
 		OutSystemID:      11,
 		OutKey:           key,
-	})
+	}
+	err = node2.Initialize()
 	require.NoError(t, err)
 	defer node2.Close()
 
@@ -606,39 +588,36 @@ func TestNodeFixFrame(t *testing.T) {
 }
 
 func TestNodeWriteSameToMultiple(t *testing.T) {
-	server, err := NewNode(NodeConf{
-		Dialect:     testDialect,
-		OutVersion:  V2,
-		OutSystemID: 11,
-		Endpoints: []EndpointConf{
-			EndpointTCPServer{"127.0.0.1:5600"},
-		},
+	server := &Node{
+		Dialect:          testDialect,
+		OutVersion:       V2,
+		OutSystemID:      11,
+		Endpoints:        []Endpoint{&EndpointTCPServer{Address: "127.0.0.1:5600"}},
 		HeartbeatDisable: true,
-	})
+	}
+	err := server.Initialize()
 	require.NoError(t, err)
 	defer server.Close()
 
-	client1, err := NewNode(NodeConf{
-		Dialect:     testDialect,
-		OutVersion:  V2,
-		OutSystemID: 11,
-		Endpoints: []EndpointConf{
-			EndpointTCPClient{"127.0.0.1:5600"},
-		},
+	client1 := &Node{
+		Dialect:          testDialect,
+		OutVersion:       V2,
+		OutSystemID:      11,
+		Endpoints:        []Endpoint{&EndpointTCPClient{Address: "127.0.0.1:5600"}},
 		HeartbeatDisable: true,
-	})
+	}
+	err = client1.Initialize()
 	require.NoError(t, err)
 	defer client1.Close()
 
-	client2, err := NewNode(NodeConf{
-		Dialect:     testDialect,
-		OutVersion:  V2,
-		OutSystemID: 11,
-		Endpoints: []EndpointConf{
-			EndpointTCPClient{"127.0.0.1:5600"},
-		},
+	client2 := &Node{
+		Dialect:          testDialect,
+		OutVersion:       V2,
+		OutSystemID:      11,
+		Endpoints:        []Endpoint{&EndpointTCPClient{Address: "127.0.0.1:5600"}},
 		HeartbeatDisable: true,
-	})
+	}
+	err = client2.Initialize()
 	require.NoError(t, err)
 	defer client2.Close()
 
@@ -672,7 +651,7 @@ func TestNodeWriteSameToMultiple(t *testing.T) {
 	err = client2.WriteFrameAll(fr)
 	require.NoError(t, err)
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		evt = <-server.Events()
 		var fr *EventFrame
 		fr, ok = evt.(*EventFrame)

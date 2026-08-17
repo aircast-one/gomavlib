@@ -1,6 +1,7 @@
 package frame
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"errors"
@@ -10,8 +11,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bluenviron/gomavlib/v3/pkg/dialect"
-	"github.com/bluenviron/gomavlib/v3/pkg/message"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialect"
+	"github.com/aircast-one/gomavlib/v4/pkg/message"
 )
 
 type (
@@ -412,18 +413,19 @@ var casesReadWrite = []struct {
 }
 
 func TestReaderNewErrors(t *testing.T) {
-	_, err := NewReader(ReaderConf{})
+	err := (&Reader{}).Initialize()
 	require.EqualError(t, err, "BufByteReader not provided")
 }
 
 func TestReader(t *testing.T) {
 	for _, ca := range casesReadWrite {
 		t.Run(ca.name, func(t *testing.T) {
-			reader, err := NewReader(ReaderConf{
-				Reader:    bytes.NewReader(ca.raw),
-				DialectRW: ca.dialectRW,
-				InKey:     ca.key,
-			})
+			reader := &Reader{
+				BufByteReader: bufio.NewReaderSize(bytes.NewReader(ca.raw), bufferSize),
+				DialectRW:     ca.dialectRW,
+				InKey:         ca.key,
+			}
+			err := reader.Initialize()
 			require.NoError(t, err)
 
 			frame, err := reader.Read()
@@ -439,9 +441,10 @@ func TestReaderWithRealTelemetry(t *testing.T) {
 	require.NoError(t, err, "Failed to load test data")
 	require.True(t, len(data) > 0, "Test data is empty")
 
-	reader, err := NewReader(ReaderConf{
-		Reader: bytes.NewReader(data),
-	})
+	reader := &Reader{
+		BufByteReader: bufio.NewReaderSize(bytes.NewReader(data), bufferSize),
+	}
+	err = reader.Initialize()
 	require.NoError(t, err)
 
 	frameCount := 0
@@ -449,15 +452,15 @@ func TestReaderWithRealTelemetry(t *testing.T) {
 	var lastErr error
 
 	for {
-		frame, err := reader.Read()
-		if err != nil {
-			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		frame, readErr := reader.Read()
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) || errors.Is(readErr, io.ErrUnexpectedEOF) {
 				break
 			}
 			var eerr ReadError
-			if errors.As(err, &eerr) {
+			if errors.As(readErr, &eerr) {
 				parseErrors++
-				lastErr = err
+				lastErr = readErr
 				// Resync and continue
 				if _, resyncErr := reader.Resync(); resyncErr != nil {
 					break
@@ -532,10 +535,11 @@ func TestReaderErrorSignatureTimestamp(t *testing.T) {
 	require.NoError(t, err)
 	buf.Write(buf2[:n])
 
-	reader, err := NewReader(ReaderConf{
-		Reader: &buf,
-		InKey:  NewV2Key(bytes.Repeat([]byte("\x4F"), 32)),
-	})
+	reader := &Reader{
+		BufByteReader: bufio.NewReaderSize(&buf, bufferSize),
+		InKey:         NewV2Key(bytes.Repeat([]byte("\x4F"), 32)),
+	}
+	err = reader.Initialize()
 	require.NoError(t, err)
 
 	_, err = reader.Read()

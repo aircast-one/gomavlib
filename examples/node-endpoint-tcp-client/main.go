@@ -4,8 +4,8 @@ package main
 import (
 	"log"
 
-	"github.com/bluenviron/gomavlib/v3"
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/ardupilotmega"
+	"github.com/aircast-one/gomavlib/v4"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/ardupilotmega"
 )
 
 // this example shows how to:
@@ -15,8 +15,8 @@ import (
 func main() {
 	// create a node which communicates with a TCP endpoint in client mode
 	node := &gomavlib.Node{
-		Endpoints: []gomavlib.EndpointConf{
-			gomavlib.EndpointTCPClient{Address: "1.2.3.4:5600"},
+		Endpoints: []gomavlib.Endpoint{
+			&gomavlib.EndpointTCPClient{Address: "1.2.3.4:5600"},
 		},
 		Dialect:     ardupilotmega.Dialect,
 		OutVersion:  gomavlib.V2, // change to V1 if you're unable to communicate with the target

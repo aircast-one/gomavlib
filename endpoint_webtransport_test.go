@@ -14,29 +14,28 @@ import (
 
 // TestWebTransportEndpoint_Init tests endpoint initialization
 func TestWebTransportEndpoint_Init(t *testing.T) {
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL: "https://example.com/mavlink",
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
-	require.NotNil(t, conf)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 	defer e.close()
 
 	// Verify defaults were set
-	require.Equal(t, 1*time.Second, e.conf.InitialRetryPeriod)
-	require.Equal(t, 30*time.Second, e.conf.MaxRetryPeriod)
-	require.Equal(t, 1.5, e.conf.BackoffMultiplier)
-	require.NotNil(t, e.conf.QUICConfig)
+	require.Equal(t, 1*time.Second, e.InitialRetryPeriod)
+	require.Equal(t, 30*time.Second, e.MaxRetryPeriod)
+	require.Equal(t, 1.5, e.BackoffMultiplier)
+	require.NotNil(t, e.QUICConfig)
 }
 
 // TestWebTransportEndpoint_InitNoURL tests that missing URL returns error
 func TestWebTransportEndpoint_InitNoURL(t *testing.T) {
-	endpoint := EndpointWebTransport{}
+	endpoint := &EndpointWebTransport{}
 
-	_, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "URL is required")
 }
@@ -48,7 +47,7 @@ func TestWebTransportEndpoint_InitWithCustomConfig(t *testing.T) {
 		KeepAlivePeriod: 15 * time.Second,
 	}
 
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL:                "https://example.com/mavlink",
 		InitialRetryPeriod: 2 * time.Second,
 		MaxRetryPeriod:     60 * time.Second,
@@ -57,64 +56,46 @@ func TestWebTransportEndpoint_InitWithCustomConfig(t *testing.T) {
 		UseDatagrams:       true,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 	defer e.close()
 
 	// Verify custom values were kept
-	require.Equal(t, 2*time.Second, e.conf.InitialRetryPeriod)
-	require.Equal(t, 60*time.Second, e.conf.MaxRetryPeriod)
-	require.Equal(t, 2.0, e.conf.BackoffMultiplier)
-	require.Equal(t, customQUICConfig, e.conf.QUICConfig)
-	require.True(t, e.conf.UseDatagrams)
+	require.Equal(t, 2*time.Second, e.InitialRetryPeriod)
+	require.Equal(t, 60*time.Second, e.MaxRetryPeriod)
+	require.Equal(t, 2.0, e.BackoffMultiplier)
+	require.Equal(t, customQUICConfig, e.QUICConfig)
+	require.True(t, e.UseDatagrams)
 }
 
 // TestWebTransportEndpoint_Label tests the endpoint label
 func TestWebTransportEndpoint_Label(t *testing.T) {
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL:   "https://example.com/mavlink",
 		Label: "custom-label",
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 	defer e.close()
 
-	require.Equal(t, "custom-label", e.conf.Label)
-}
-
-// TestWebTransportEndpoint_Conf tests the Conf() method
-func TestWebTransportEndpoint_Conf(t *testing.T) {
-	endpoint := EndpointWebTransport{
-		URL:   "https://example.com/mavlink",
-		Label: "test-endpoint",
-	}
-
-	conf, err := endpoint.init(nil)
-	require.NoError(t, err)
-
-	e := conf.(*endpointWebTransport)
-	defer e.close()
-
-	returnedConf := e.Conf().(EndpointWebTransport)
-	require.Equal(t, endpoint.URL, returnedConf.URL)
-	require.Equal(t, endpoint.Label, returnedConf.Label)
+	require.Equal(t, "custom-label", e.Label)
 }
 
 // TestWebTransportEndpoint_OneChannelAtATime tests oneChannelAtAtime() method
 func TestWebTransportEndpoint_OneChannelAtATime(t *testing.T) {
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL: "https://example.com/mavlink",
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 	defer e.close()
 
 	// WebTransport endpoints should return true (one channel at a time)
@@ -123,14 +104,14 @@ func TestWebTransportEndpoint_OneChannelAtATime(t *testing.T) {
 
 // TestWebTransportEndpoint_IsEndpoint tests isEndpoint() method
 func TestWebTransportEndpoint_IsEndpoint(t *testing.T) {
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL: "https://example.com/mavlink",
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 	defer e.close()
 
 	// This is a marker method that should do nothing
@@ -139,14 +120,14 @@ func TestWebTransportEndpoint_IsEndpoint(t *testing.T) {
 
 // TestWebTransportEndpoint_GetState tests GetState() method
 func TestWebTransportEndpoint_GetState(t *testing.T) {
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL: "https://example.com/mavlink",
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 	defer e.close()
 
 	// Initially should be disconnected
@@ -156,14 +137,14 @@ func TestWebTransportEndpoint_GetState(t *testing.T) {
 
 // TestWebTransportEndpoint_GetStats tests GetStats() method
 func TestWebTransportEndpoint_GetStats(t *testing.T) {
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL: "https://example.com/mavlink",
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 	defer e.close()
 
 	stats := e.GetStats()
@@ -179,13 +160,13 @@ func TestWebTransportEndpoint_StateCallback(t *testing.T) {
 	var mu sync.Mutex
 	connectingReceived := make(chan struct{})
 
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL:                  "https://127.0.0.1:9999/mavlink", // Non-existent server
 		InitialRetryPeriod:   50 * time.Millisecond,
 		MaxRetryPeriod:       100 * time.Millisecond,
 		BackoffMultiplier:    2.0,
 		MaxReconnectAttempts: 2,
-		OnStateChange: func(oldState, newState ConnectionState, err error) {
+		OnStateChange: func(_, newState ConnectionState, _ error) {
 			mu.Lock()
 			stateChanges = append(stateChanges, newState)
 			if newState == ConnStateConnecting {
@@ -199,16 +180,16 @@ func TestWebTransportEndpoint_StateCallback(t *testing.T) {
 		},
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 
 	// Start connection in goroutine
 	provideDone := make(chan struct{})
 	go func() {
 		defer close(provideDone)
-		e.provide()
+		e.provide() //nolint:errcheck
 	}()
 
 	// Wait for connecting state
@@ -232,14 +213,14 @@ func TestWebTransportEndpoint_StateCallback(t *testing.T) {
 func TestWebTransportEndpoint_TerminateReturnsErrTerminated(t *testing.T) {
 	connecting := make(chan struct{})
 
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL:                  "https://127.0.0.1:9999/mavlink", // Non-existent server
 		InitialRetryPeriod:   100 * time.Millisecond,
 		MaxRetryPeriod:       200 * time.Millisecond,
 		BackoffMultiplier:    2.0,
 		MaxReconnectAttempts: 0, // Unlimited
-		OnStateChange: func(old, new ConnectionState, err error) {
-			if new == ConnStateConnecting {
+		OnStateChange: func(_, newState ConnectionState, _ error) {
+			if newState == ConnStateConnecting {
 				select {
 				case <-connecting:
 				default:
@@ -249,10 +230,10 @@ func TestWebTransportEndpoint_TerminateReturnsErrTerminated(t *testing.T) {
 		},
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 
 	// Start connection in goroutine
 	provideDone := make(chan struct{})
@@ -283,14 +264,14 @@ func TestWebTransportEndpoint_TerminateReturnsErrTerminated(t *testing.T) {
 func TestWebTransportEndpoint_MaxReconnectAttempts(t *testing.T) {
 	disconnected := make(chan struct{})
 
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL:                  "https://127.0.0.1:9999/mavlink", // Non-existent server
 		InitialRetryPeriod:   50 * time.Millisecond,
 		MaxRetryPeriod:       100 * time.Millisecond,
 		BackoffMultiplier:    1.0, // No backoff for faster test
 		MaxReconnectAttempts: 3,
-		OnStateChange: func(old, new ConnectionState, err error) {
-			if new == ConnStateDisconnected && old != ConnStateDisconnected {
+		OnStateChange: func(oldState, newState ConnectionState, _ error) {
+			if newState == ConnStateDisconnected && oldState != ConnStateDisconnected {
 				select {
 				case <-disconnected:
 				default:
@@ -300,10 +281,10 @@ func TestWebTransportEndpoint_MaxReconnectAttempts(t *testing.T) {
 		},
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 
 	// Start connection in goroutine
 	provideDone := make(chan struct{})
@@ -337,7 +318,7 @@ func TestWebTransportEndpoint_MaxReconnectAttempts(t *testing.T) {
 
 // TestWebTransportEndpoint_BackoffIncrease tests exponential backoff calculation
 func TestWebTransportEndpoint_BackoffIncrease(t *testing.T) {
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL:                  "https://example.com/mavlink",
 		InitialRetryPeriod:   50 * time.Millisecond,
 		MaxRetryPeriod:       200 * time.Millisecond,
@@ -345,10 +326,10 @@ func TestWebTransportEndpoint_BackoffIncrease(t *testing.T) {
 		MaxReconnectAttempts: 5,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 	defer e.close()
 
 	// Test backoff calculation via retryState
@@ -398,24 +379,24 @@ func TestWebTransportEndpoint_TLSConfig(t *testing.T) {
 		InsecureSkipVerify: true,
 	}
 
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL:       "https://example.com/mavlink",
 		TLSConfig: customTLS,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 	defer e.close()
 
-	require.Equal(t, customTLS, e.conf.TLSConfig)
+	require.Equal(t, customTLS, e.TLSConfig)
 	require.True(t, e.dialer.TLSClientConfig.InsecureSkipVerify)
 }
 
 // TestWebTransportEndpoint_Headers tests custom headers
 func TestWebTransportEndpoint_Headers(t *testing.T) {
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL: "https://example.com/mavlink",
 		Headers: map[string]string{
 			"Authorization": "Bearer test-token",
@@ -423,31 +404,31 @@ func TestWebTransportEndpoint_Headers(t *testing.T) {
 		},
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 	defer e.close()
 
-	require.Equal(t, "Bearer test-token", e.conf.Headers["Authorization"])
-	require.Equal(t, "value", e.conf.Headers["X-Custom"])
+	require.Equal(t, "Bearer test-token", e.Headers["Authorization"])
+	require.Equal(t, "value", e.Headers["X-Custom"])
 }
 
 // TestWebTransportEndpoint_UseDatagrams tests datagram mode configuration
 func TestWebTransportEndpoint_UseDatagrams(t *testing.T) {
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL:          "https://example.com/mavlink",
 		UseDatagrams: true,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 	defer e.close()
 
-	require.True(t, e.conf.UseDatagrams)
-	require.True(t, e.conf.QUICConfig.EnableDatagrams)
+	require.True(t, e.UseDatagrams)
+	require.True(t, e.QUICConfig.EnableDatagrams)
 }
 
 // TestWebTransportEndpoint_SetState tests state transitions
@@ -456,21 +437,21 @@ func TestWebTransportEndpoint_SetState(t *testing.T) {
 	var lastErr error
 	var mu sync.Mutex
 
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL: "https://example.com/mavlink",
-		OnStateChange: func(old, new ConnectionState, err error) {
+		OnStateChange: func(oldState, newState ConnectionState, err error) {
 			mu.Lock()
-			lastOldState = old
-			lastNewState = new
+			lastOldState = oldState
+			lastNewState = newState
 			lastErr = err
 			mu.Unlock()
 		},
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 	defer e.close()
 
 	// Set state to connecting
@@ -506,19 +487,19 @@ func TestWebTransportEndpoint_SetStateSameState(t *testing.T) {
 	callCount := 0
 	var mu sync.Mutex
 
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL: "https://example.com/mavlink",
-		OnStateChange: func(old, new ConnectionState, err error) {
+		OnStateChange: func(_, _ ConnectionState, _ error) {
 			mu.Lock()
 			callCount++
 			mu.Unlock()
 		},
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 	defer e.close()
 
 	// Set to same state (disconnected -> disconnected)
@@ -531,41 +512,41 @@ func TestWebTransportEndpoint_SetStateSameState(t *testing.T) {
 
 // TestWebTransportEndpoint_DefaultQUICConfig tests default QUIC configuration
 func TestWebTransportEndpoint_DefaultQUICConfig(t *testing.T) {
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL:          "https://example.com/mavlink",
 		UseDatagrams: true,
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 	defer e.close()
 
 	// Verify default QUIC config values using constants
-	require.Equal(t, defaultMaxIdleTimeout, e.conf.QUICConfig.MaxIdleTimeout)
-	require.Equal(t, defaultKeepAlivePeriod, e.conf.QUICConfig.KeepAlivePeriod)
-	require.True(t, e.conf.QUICConfig.EnableDatagrams)
-	require.True(t, e.conf.QUICConfig.Allow0RTT)
-	require.Equal(t, int64(defaultMaxIncomingStreams), e.conf.QUICConfig.MaxIncomingStreams)
-	require.Equal(t, int64(defaultMaxIncomingUniStreams), e.conf.QUICConfig.MaxIncomingUniStreams)
+	require.Equal(t, defaultMaxIdleTimeout, e.QUICConfig.MaxIdleTimeout)
+	require.Equal(t, defaultKeepAlivePeriod, e.QUICConfig.KeepAlivePeriod)
+	require.True(t, e.QUICConfig.EnableDatagrams)
+	require.True(t, e.QUICConfig.Allow0RTT)
+	require.Equal(t, int64(defaultMaxIncomingStreams), e.QUICConfig.MaxIncomingStreams)
+	require.Equal(t, int64(defaultMaxIncomingUniStreams), e.QUICConfig.MaxIncomingUniStreams)
 }
 
 // TestWebTransportEndpoint_DefaultLabel tests default label
 func TestWebTransportEndpoint_DefaultLabel(t *testing.T) {
-	endpoint := EndpointWebTransport{
+	endpoint := &EndpointWebTransport{
 		URL: "https://example.com/mavlink",
 		// No Label set
 	}
 
-	conf, err := endpoint.init(nil)
+	err := endpoint.init(nil)
 	require.NoError(t, err)
 
-	e := conf.(*endpointWebTransport)
+	e := endpoint
 	defer e.close()
 
 	// Default label should be empty in config, but "webtransport" is returned by provide()
-	require.Equal(t, "", e.conf.Label)
+	require.Equal(t, "", e.Label)
 }
 
 // TestWebTransportDatagramConn_ClosedRead tests reading from closed datagram connection
@@ -675,11 +656,11 @@ func TestWebTransportEndpoint_URLSchemeValidation(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			endpoint := EndpointWebTransport{
+			endpoint := &EndpointWebTransport{
 				URL: tc.url,
 			}
 
-			_, err := endpoint.init(nil)
+			err := endpoint.init(nil)
 			if tc.expectError {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.errorMsg)

@@ -3,25 +3,27 @@
 package all
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/development"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/common"
 )
 
 // Source for GLOBAL_POSITION measurement or estimate.
-type GLOBAL_POSITION_SRC = development.GLOBAL_POSITION_SRC
+type GLOBAL_POSITION_SRC = common.GLOBAL_POSITION_SRC
 
 const (
 	// Source is unknown or not one of the listed types.
-	GLOBAL_POSITION_UNKNOWN GLOBAL_POSITION_SRC = development.GLOBAL_POSITION_UNKNOWN
+	GLOBAL_POSITION_SRC_UNKNOWN GLOBAL_POSITION_SRC = common.GLOBAL_POSITION_SRC_UNKNOWN
 	// Global Navigation Satellite System (e.g.: GPS, Galileo, Glonass, BeiDou).
-	GLOBAL_POSITION_GNSS GLOBAL_POSITION_SRC = development.GLOBAL_POSITION_GNSS
+	GLOBAL_POSITION_SRC_GNSS GLOBAL_POSITION_SRC = common.GLOBAL_POSITION_SRC_GNSS
 	// Vision system (e.g.: map matching).
-	GLOBAL_POSITION_VISION GLOBAL_POSITION_SRC = development.GLOBAL_POSITION_VISION
-	// Pseudo-satellite system (performs GNSS-like function, but usually with transceiver beacons).
-	GLOBAL_POSITION_PSEUDOLITES GLOBAL_POSITION_SRC = development.GLOBAL_POSITION_PSEUDOLITES
+	GLOBAL_POSITION_SRC_VISION GLOBAL_POSITION_SRC = common.GLOBAL_POSITION_SRC_VISION
+	// A pseudo-satellite system using transceiver beacons to perform GNSS-like positioning.
+	GLOBAL_POSITION_SRC_PSEUDOLITES GLOBAL_POSITION_SRC = common.GLOBAL_POSITION_SRC_PSEUDOLITES
 	// Terrain referenced navigation.
-	GLOBAL_POSITION_TRN GLOBAL_POSITION_SRC = development.GLOBAL_POSITION_TRN
+	GLOBAL_POSITION_SRC_TERRAIN GLOBAL_POSITION_SRC = common.GLOBAL_POSITION_SRC_TERRAIN
 	// Magnetic positioning.
-	GLOBAL_POSITION_MAGNETIC GLOBAL_POSITION_SRC = development.GLOBAL_POSITION_MAGNETIC
+	GLOBAL_POSITION_SRC_MAGNETIC GLOBAL_POSITION_SRC = common.GLOBAL_POSITION_SRC_MAGNETIC
 	// Estimated position based on various sensors (eg. a Kalman Filter).
-	GLOBAL_POSITION_ESTIMATOR GLOBAL_POSITION_SRC = development.GLOBAL_POSITION_ESTIMATOR
+	GLOBAL_POSITION_SRC_ESTIMATOR GLOBAL_POSITION_SRC = common.GLOBAL_POSITION_SRC_ESTIMATOR
+	// Low Earth Orbit satellite-based positioning (e.g.: Starlink, Xona PULSAR).
+	GLOBAL_POSITION_SRC_LEO GLOBAL_POSITION_SRC = common.GLOBAL_POSITION_SRC_LEO
 )

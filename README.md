@@ -1,11 +1,10 @@
 # gomavlib
 
-[![Test](https://github.com/bluenviron/gomavlib/actions/workflows/test.yml/badge.svg)](https://github.com/bluenviron/gomavlib/actions/workflows/test.yml)
-[![Lint](https://github.com/bluenviron/gomavlib/actions/workflows/lint.yml/badge.svg)](https://github.com/bluenviron/gomavlib/actions/workflows/lint.yml)
-[![Dialects](https://github.com/bluenviron/gomavlib/actions/workflows/dialects.yml/badge.svg)](https://github.com/bluenviron/gomavlib/actions/workflows/dialects.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/bluenviron/gomavlib)](https://goreportcard.com/report/github.com/bluenviron/gomavlib)
-[![CodeCov](https://codecov.io/gh/bluenviron/gomavlib/branch/main/graph/badge.svg)](https://app.codecov.io/gh/bluenviron/gomavlib/tree/main)
-[![PkgGoDev](https://pkg.go.dev/badge/github.com/bluenviron/gomavlib/v3)](https://pkg.go.dev/github.com/bluenviron/gomavlib/v3#pkg-index)
+[![Test](https://github.com/aircast-one/gomavlib/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/aircast-one/gomavlib/actions/workflows/test.yml?query=branch%3Amain)
+[![Lint](https://github.com/aircast-one/gomavlib/actions/workflows/lint.yml/badge.svg?branch=main)](https://github.com/aircast-one/gomavlib/actions/workflows/lint.yml?query=branch%3Amain)
+[![Dialects](https://github.com/aircast-one/gomavlib/actions/workflows/dialects.yml/badge.svg?branch=main)](https://github.com/aircast-one/gomavlib/actions/workflows/dialects.yml?query=branch%3Amain)
+[![CodeCov](https://codecov.io/gh/aircast-one/gomavlib/branch/main/graph/badge.svg)](https://app.codecov.io/gh/aircast-one/gomavlib/tree/main)
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/aircast-one/gomavlib/v4)](https://pkg.go.dev/github.com/aircast-one/gomavlib/v4#pkg-index)
 
 gomavlib is a library that implements the Mavlink protocol (2.0 and 1.0) in the Go programming language. It can interact with Mavlink-capable devices through a serial port, UDP, TCP or a custom transport, and it can be used to power UGVs, UAVs, ground stations, monitoring systems or routers.
 
@@ -40,7 +39,7 @@ Features:
 
 ## Installation
 
-1. Install Go &ge; 1.24.
+1. Install Go &ge; 1.25.
 
 2. Create an empty folder, open a terminal in it and initialize the Go modules system:
 
@@ -82,14 +81,14 @@ Features:
 
 ## API Documentation
 
-[Click to open the API Documentation](https://pkg.go.dev/github.com/bluenviron/gomavlib/v3#pkg-index)
+[Click to open the API Documentation](https://pkg.go.dev/github.com/aircast-one/gomavlib/v4#pkg-index)
 
 ## Dialect generation
 
 Standard dialects are provided in the `pkg/dialects/` folder, but it's also possible to use custom dialects, that can be converted into Go files by running:
 
 ```
-go install github.com/bluenviron/gomavlib/v3/cmd/dialect-import@latest
+go install github.com/aircast-one/gomavlib/v4/cmd/dialect-import@latest
 dialect-import my_dialect.xml
 ```
 

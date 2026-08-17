@@ -3,7 +3,7 @@
 package marsh
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/common"
 )
 
 // Commands to be executed by the MAV. They can be executed on user request, or as part of a mission script. If the action is used in a mission, the parameter mapping to the waypoint/mission message is as follows: Param 1, Param 2, Param 3, Param 4, X: Param 5, Y:Param 6, Z:Param 7. This command list is similar what ARINC 424 is for commercial aircraft: A data format how to interpret waypoint/mission data. NaN and INT32_MAX may be used in float/integer params (respectively) to indicate optional/default values (e.g. to use the component's current yaw or latitude rather than a specific value). See https://mavlink.io/en/guide/xml_schema.html#MAV_CMD for information about the structure of the MAV_CMD entries
@@ -40,6 +40,16 @@ const (
 	MAV_CMD_DO_FOLLOW_REPOSITION MAV_CMD = common.MAV_CMD_DO_FOLLOW_REPOSITION
 	// Start orbiting on the circumference of a circle defined by the parameters. Setting values to NaN/INT32_MAX (as appropriate) results in using defaults.
 	MAV_CMD_DO_ORBIT MAV_CMD = common.MAV_CMD_DO_ORBIT
+	// Fly a figure eight path as defined by the parameters.
+	// Set parameters to NaN/INT32_MAX (as appropriate) to use system-default values.
+	// The command is intended for fixed wing vehicles (and VTOL hybrids flying in fixed-wing mode), allowing POI tracking for gimbals that don't support infinite rotation.
+	// This command only defines the flight path. Speed should be set independently (use e.g. MAV_CMD_DO_CHANGE_SPEED).
+	// Yaw and other degrees of freedom are not specified, and will be flight-stack specific (on vehicles where they can be controlled independent of the heading).
+	MAV_CMD_DO_FIGURE_EIGHT MAV_CMD = common.MAV_CMD_DO_FIGURE_EIGHT
+	// Circular arc path waypoint.
+	// This defines the end/exit point and angle (param1) of an arc path from the previous waypoint. A position is required before this command to define the start of the arc (e.g. current position, a MAV_CMD_NAV_WAYPOINT, or a MAV_CMD_NAV_ARC_WAYPOINT).
+	// The resulting path is a circular arc in the NE frame, with the difference in height being defined by the difference in waypoint altitudes.
+	MAV_CMD_NAV_ARC_WAYPOINT MAV_CMD = common.MAV_CMD_NAV_ARC_WAYPOINT
 	// Sets the region of interest (ROI) for a sensor set or the vehicle itself. This can then be used by the vehicle's control system to control the vehicle attitude and the attitude of various sensors such as cameras.
 	MAV_CMD_NAV_ROI MAV_CMD = common.MAV_CMD_NAV_ROI
 	// Control autonomous path planning on the MAV.
@@ -81,7 +91,7 @@ const (
 	MAV_CMD_DO_SET_HOME MAV_CMD = common.MAV_CMD_DO_SET_HOME
 	// Set a system parameter.  Caution!  Use of this command requires knowledge of the numeric enumeration value of the parameter.
 	MAV_CMD_DO_SET_PARAMETER MAV_CMD = common.MAV_CMD_DO_SET_PARAMETER
-	// Set a relay to a condition.
+	// Set a relay to a condition. The current value may optionally be reported using RELAY_STATUS.
 	MAV_CMD_DO_SET_RELAY MAV_CMD = common.MAV_CMD_DO_SET_RELAY
 	// Cycle a relay on and off for a desired number of cycles with a desired period.
 	MAV_CMD_DO_REPEAT_RELAY MAV_CMD = common.MAV_CMD_DO_REPEAT_RELAY
@@ -229,7 +239,7 @@ const (
 	// Configures illuminator settings. An illuminator is a light source that is used for lighting up dark areas external to the system: e.g. a torch or searchlight (as opposed to a light source for illuminating the system itself, e.g. an indicator light).
 	MAV_CMD_DO_ILLUMINATOR_CONFIGURE MAV_CMD = common.MAV_CMD_DO_ILLUMINATOR_CONFIGURE
 	// Request the home position from the vehicle.
-	// The vehicle will ACK the command and then emit the HOME_POSITION message.
+	// The vehicle will ACK the command and emit the HOME_POSITION message.
 	MAV_CMD_GET_HOME_POSITION MAV_CMD = common.MAV_CMD_GET_HOME_POSITION
 	// Inject artificial failure for testing purposes. Note that autopilots should implement an additional protection before accepting this command such as a specific param setting.
 	MAV_CMD_INJECT_FAILURE MAV_CMD = common.MAV_CMD_INJECT_FAILURE
@@ -278,6 +288,12 @@ const (
 	MAV_CMD_JUMP_TAG MAV_CMD = common.MAV_CMD_JUMP_TAG
 	// Jump to the matching tag in the mission list. Repeat this action for the specified number of times. A mission should contain a single matching tag for each jump. If this is not the case then a jump to a missing tag should complete the mission, and a jump where there are multiple matching tags should always select the one with the lowest mission sequence number.
 	MAV_CMD_DO_JUMP_TAG MAV_CMD = common.MAV_CMD_DO_JUMP_TAG
+	// Sets the GNSS coordinates of the vehicle local origin (0,0,0) position.
+	// Vehicle should emit GPS_GLOBAL_ORIGIN irrespective of whether the origin is changed.
+	// This enables transform between the local coordinate frame and the global (GNSS) coordinate frame, which may be necessary when (for example) indoor and outdoor settings are connected and the MAV should move from in- to outdoor.
+	// This command supersedes SET_GPS_GLOBAL_ORIGIN.
+	// Should be sent in a COMMAND_INT (Expected frame is MAV_FRAME_GLOBAL, and this should be assumed when sent in COMMAND_LONG).
+	MAV_CMD_DO_SET_GLOBAL_ORIGIN MAV_CMD = common.MAV_CMD_DO_SET_GLOBAL_ORIGIN
 	// Set gimbal manager pitch/yaw setpoints (low rate command). It is possible to set combinations of the values below. E.g. an angle as well as a desired angular rate can be used to get to this angle at a certain angular rate, or an angular rate only will result in continuous turning. NaN is to be used to signal unset. Note: only the gimbal manager will react to this command - it will be ignored by a gimbal device. Use GIMBAL_MANAGER_SET_PITCHYAW if you need to stream pitch/yaw setpoints at higher rate.
 	MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW MAV_CMD = common.MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW
 	// Gimbal configuration to set which sysid/compid is in primary and secondary control.
@@ -339,7 +355,7 @@ const (
 	MAV_CMD_DO_VTOL_TRANSITION MAV_CMD = common.MAV_CMD_DO_VTOL_TRANSITION
 	// Request authorization to arm the vehicle to a external entity, the arm authorizer is responsible to request all data that is needs from the vehicle before authorize or deny the request.
 	// If approved the COMMAND_ACK message progress field should be set with period of time that this authorization is valid in seconds.
-	// If the authorization is denied COMMAND_ACK.result_param2 should be set with one of the reasons in ARM_AUTH_DENIED_REASON.
+	// If the authorization is denied COMMAND_ACK.result_param2 should be set with one of the reasons in MAV_ARM_AUTH_DENIED_REASON.
 	MAV_CMD_ARM_AUTHORIZATION_REQUEST MAV_CMD = common.MAV_CMD_ARM_AUTHORIZATION_REQUEST
 	// This command sets the submode to standard guided when vehicle is in guided mode. The vehicle holds position and altitude and the user can input the desired velocities along all three axes.
 	MAV_CMD_SET_GUIDED_SUBMODE_STANDARD MAV_CMD = common.MAV_CMD_SET_GUIDED_SUBMODE_STANDARD
@@ -375,6 +391,12 @@ const (
 	MAV_CMD_FIXED_MAG_CAL_YAW MAV_CMD = common.MAV_CMD_FIXED_MAG_CAL_YAW
 	// Command to operate winch.
 	MAV_CMD_DO_WINCH MAV_CMD = common.MAV_CMD_DO_WINCH
+	// Change flight speed at a given rate. This slews the vehicle at a controllable rate between it's previous speed and the new one.
+	MAV_CMD_GUIDED_CHANGE_SPEED MAV_CMD = common.MAV_CMD_GUIDED_CHANGE_SPEED
+	// Change target altitude at a given rate. This slews the vehicle at a controllable rate between it's previous altitude and the new one.
+	MAV_CMD_GUIDED_CHANGE_ALTITUDE MAV_CMD = common.MAV_CMD_GUIDED_CHANGE_ALTITUDE
+	// Change to target direction at a given rate, overriding previous heading/s. This slews the vehicle at a controllable rate between its previous heading and the new one.
+	MAV_CMD_GUIDED_CHANGE_HEADING MAV_CMD = common.MAV_CMD_GUIDED_CHANGE_HEADING
 	// Provide an external position estimate for use when dead-reckoning. This is meant to be used for occasional position resets that may be provided by a external system such as a remote pilot using landmarks over a video link.
 	MAV_CMD_EXTERNAL_POSITION_ESTIMATE MAV_CMD = common.MAV_CMD_EXTERNAL_POSITION_ESTIMATE
 	// User defined waypoint item. Ground Station will show the Vehicle as flying through this item.
@@ -407,6 +429,6 @@ const (
 	MAV_CMD_USER_4 MAV_CMD = common.MAV_CMD_USER_4
 	// User defined command. Ground Station will not show the Vehicle as flying through this item. Example: MAV_CMD_DO_SET_PARAMETER item.
 	MAV_CMD_USER_5 MAV_CMD = common.MAV_CMD_USER_5
-	// Request forwarding of CAN packets from the given CAN bus to this component. CAN Frames are sent using CAN_FRAME and CANFD_FRAME messages
+	// Request forwarding of CAN packets from the given CAN bus to this component via this MAVLink channel. CAN Frames are sent using CAN_FRAME and CANFD_FRAME messages
 	MAV_CMD_CAN_FORWARD MAV_CMD = common.MAV_CMD_CAN_FORWARD
 )

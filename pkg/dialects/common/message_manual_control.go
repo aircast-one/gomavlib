@@ -3,7 +3,7 @@
 package common
 
 // Manual (joystick) control message.
-// This message represents movement axes and button using standard joystick axes nomenclature. Unused axes can be disabled and buttons states are transmitted as individual on/off bits of a bitmask. For more information see https://mavlink.io/en/manual_control.html
+// This message represents movement axes and button using standard joystick axes nomenclature. Unused axes can be disabled and buttons states are transmitted as individual on/off bits of a bitmask. For more information see https://mavlink.io/en/services/manual_control.html
 type MessageManualControl struct {
 	// The system to be controlled.
 	Target uint8
@@ -13,7 +13,7 @@ type MessageManualControl struct {
 	Y int16
 	// Z-axis, normalized to the range [-1000,1000]. A value of INT16_MAX indicates that this axis is invalid. Generally corresponds to a separate slider movement with maximum being 1000 and minimum being -1000 on a joystick and the thrust of a vehicle. Positive values are positive thrust, negative values are negative thrust.
 	Z int16
-	// R-axis, normalized to the range [-1000,1000]. A value of INT16_MAX indicates that this axis is invalid. Generally corresponds to a twisting of the joystick, with counter-clockwise being 1000 and clockwise being -1000, and the yaw of a vehicle.
+	// R-axis, normalized to the range [-1000,1000]. A value of INT16_MAX indicates that this axis is invalid. Generally corresponds to a twisting of the joystick, with clockwise being 1000 and counter-clockwise being -1000, and the yaw of a vehicle.
 	R int16
 	// A bitfield corresponding to the joystick buttons' 0-15 current state, 1 for pressed, 0 for released. The lowest bit corresponds to Button 1.
 	Buttons uint16

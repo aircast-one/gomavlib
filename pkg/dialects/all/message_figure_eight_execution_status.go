@@ -3,9 +3,9 @@
 package all
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/development"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/common"
 )
 
 // Vehicle status report that is sent out while figure eight execution is in progress (see MAV_CMD_DO_FIGURE_EIGHT).
 // This may typically send at low rates: of the order of 2Hz.
-type MessageFigureEightExecutionStatus = development.MessageFigureEightExecutionStatus
+type MessageFigureEightExecutionStatus = common.MessageFigureEightExecutionStatus

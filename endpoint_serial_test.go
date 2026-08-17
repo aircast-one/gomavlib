@@ -1,14 +1,15 @@
 package gomavlib
 
 import (
+	"bufio"
 	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bluenviron/gomavlib/v3/pkg/dialect"
-	"github.com/bluenviron/gomavlib/v3/pkg/frame"
-	"github.com/bluenviron/gomavlib/v3/pkg/streamwriter"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialect"
+	"github.com/aircast-one/gomavlib/v4/pkg/frame"
+	"github.com/aircast-one/gomavlib/v4/pkg/streamwriter"
 )
 
 func TestEndpointSerial(t *testing.T) {
@@ -49,7 +50,7 @@ func TestEndpointSerial(t *testing.T) {
 			err = sw.Initialize()
 			require.NoError(t, err)
 
-			for i := 0; i < 3; i++ {
+			for i := range 3 {
 				err = sw.Write(&MessageHeartbeat{
 					Type:           1,
 					Autopilot:      2,
@@ -85,16 +86,17 @@ func TestEndpointSerial(t *testing.T) {
 		return remote, nil
 	}
 
-	node, err := NewNode(NodeConf{
-		Dialect:     testDialect,
-		OutVersion:  V2,
-		OutSystemID: 10,
-		Endpoints: []EndpointConf{EndpointSerial{
+	node := &Node{
+		Dialect:          testDialect,
+		OutVersion:       V2,
+		OutSystemID:      10,
+		HeartbeatDisable: true,
+		Endpoints: []Endpoint{&EndpointSerial{
 			Device: "/dev/ttyUSB0",
 			Baud:   57600,
 		}},
-		HeartbeatDisable: true,
-	})
+	}
+	err := node.Initialize()
 	require.NoError(t, err)
 	defer node.Close()
 
@@ -103,7 +105,7 @@ func TestEndpointSerial(t *testing.T) {
 		Channel: evt.(*EventChannelOpen).Channel,
 	}, evt)
 
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		evt = <-node.Events()
 		require.Equal(t, &EventFrame{
 			Frame: &frame.V2Frame{
@@ -203,8 +205,8 @@ func TestEndpointSerialReconnect(t *testing.T) {
 				require.NoError(t, err)
 
 				rw := &frame.Reader{
-					ByteReader: local,
-					DialectRW:  dialectRW,
+					BufByteReader: bufio.NewReader(local),
+					DialectRW:     dialectRW,
 				}
 				err = rw.Initialize()
 				require.NoError(t, err)
@@ -234,16 +236,17 @@ func TestEndpointSerialReconnect(t *testing.T) {
 		return remote, nil
 	}
 
-	node, err := NewNode(NodeConf{
-		Dialect:     testDialect,
-		OutVersion:  V2,
-		OutSystemID: 10,
-		Endpoints: []EndpointConf{EndpointSerial{
+	node := &Node{
+		Dialect:          testDialect,
+		OutVersion:       V2,
+		OutSystemID:      10,
+		HeartbeatDisable: true,
+		Endpoints: []Endpoint{&EndpointSerial{
 			Device: "/dev/ttyUSB0",
 			Baud:   57600,
 		}},
-		HeartbeatDisable: true,
-	})
+	}
+	err := node.Initialize()
 	require.NoError(t, err)
 	defer node.Close()
 

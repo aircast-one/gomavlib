@@ -1,11 +1,12 @@
-package dialect
+package dialect_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/bluenviron/gomavlib/v3/pkg/message"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialect"
+	"github.com/aircast-one/gomavlib/v4/pkg/message"
 )
 
 type (
@@ -35,7 +36,10 @@ func (*Invalid) GetID() uint32 {
 }
 
 func TestReadWriter(t *testing.T) {
-	rw, err := NewReadWriter(&Dialect{3, []message.Message{&MessageHeartbeat{}}})
+	rw := &dialect.ReadWriter{
+		Dialect: &dialect.Dialect{3, []message.Message{&MessageHeartbeat{}}},
+	}
+	err := rw.Initialize()
 	require.NoError(t, err)
 
 	mrw := rw.GetMessage(0)
@@ -48,12 +52,12 @@ func TestReadWriter(t *testing.T) {
 func TestReadWriterErrors(t *testing.T) {
 	for _, ca := range []struct {
 		name    string
-		dialect *Dialect
+		dialect *dialect.Dialect
 		err     string
 	}{
 		{
 			"duplicate message",
-			&Dialect{3, []message.Message{
+			&dialect.Dialect{3, []message.Message{
 				&MessageHeartbeat{},
 				&MessageHeartbeat{},
 			}},
@@ -61,14 +65,17 @@ func TestReadWriterErrors(t *testing.T) {
 		},
 		{
 			"invalid message",
-			&Dialect{3, []message.Message{
+			&dialect.Dialect{3, []message.Message{
 				&Invalid{},
 			}},
-			"message *dialect.Invalid: struct name must begin with 'Message'",
+			"message *dialect_test.Invalid: struct name must begin with 'Message'",
 		},
 	} {
 		t.Run(ca.name, func(t *testing.T) {
-			_, err := NewReadWriter(ca.dialect)
+			rw := &dialect.ReadWriter{
+				Dialect: ca.dialect,
+			}
+			err := rw.Initialize()
 			require.EqualError(t, err, ca.err)
 		})
 	}

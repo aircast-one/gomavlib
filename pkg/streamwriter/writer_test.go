@@ -6,10 +6,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bluenviron/gomavlib/v3/pkg/dialect"
-	"github.com/bluenviron/gomavlib/v3/pkg/frame"
-	"github.com/bluenviron/gomavlib/v3/pkg/message"
 	"github.com/stretchr/testify/require"
+
+	"github.com/aircast-one/gomavlib/v4/pkg/dialect"
+	"github.com/aircast-one/gomavlib/v4/pkg/frame"
+	"github.com/aircast-one/gomavlib/v4/pkg/message"
 )
 
 var testDialectRW = func() *dialect.ReadWriter {
@@ -69,9 +70,7 @@ func (m *MessageTest8) GetID() uint32 {
 }
 
 func TestWriteMessage(t *testing.T) {
-	// fake current time in order to obtain deterministic signatures
-	fixedTime := time.Date(2019, time.May, 18, 1, 2, 3, 4, time.UTC)
-	clock := frame.MockClock{Time: fixedTime}
+	wayback := time.Date(2019, time.May, 18, 1, 2, 3, 4, time.UTC)
 
 	for _, ca := range []struct {
 		name string
@@ -124,8 +123,8 @@ func TestWriteMessage(t *testing.T) {
 				Version:     ca.ver,
 				SystemID:    1,
 				Key:         ca.key,
-				Clock:       clock,
 			}
+			nw.timeNow = func() time.Time { return wayback }
 			err = nw.Initialize()
 			require.NoError(t, err)
 

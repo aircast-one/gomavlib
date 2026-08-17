@@ -3,9 +3,10 @@
 package pythonarraytest
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/common"
 )
 
+// Reasons for denying an authorization request made with MAV_CMD_ARM_AUTHORIZATION_REQUEST. If the COMMAND_ACK result is MAV_RESULT_DENIED, this is used to set the reason in the result_param2 field.
 type MAV_ARM_AUTH_DENIED_REASON = common.MAV_ARM_AUTH_DENIED_REASON
 
 const (

@@ -3,7 +3,7 @@
 package ualberta
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/common"
 )
 
 // List of possible failure type to inject.
@@ -26,4 +26,6 @@ const (
 	FAILURE_TYPE_DELAYED FAILURE_TYPE = common.FAILURE_TYPE_DELAYED
 	// Unit is sometimes working, sometimes not.
 	FAILURE_TYPE_INTERMITTENT FAILURE_TYPE = common.FAILURE_TYPE_INTERMITTENT
+	// Unit is publishing plausible values but drifting away from true values.
+	FAILURE_TYPE_DRIFT FAILURE_TYPE = common.FAILURE_TYPE_DRIFT
 )

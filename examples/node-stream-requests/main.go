@@ -4,8 +4,8 @@ package main
 import (
 	"log"
 
-	"github.com/bluenviron/gomavlib/v3"
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/ardupilotmega"
+	"github.com/aircast-one/gomavlib/v4"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/ardupilotmega"
 )
 
 // this example shows how to:
@@ -17,8 +17,8 @@ import (
 func main() {
 	// create a node
 	node := &gomavlib.Node{
-		Endpoints: []gomavlib.EndpointConf{
-			gomavlib.EndpointSerial{
+		Endpoints: []gomavlib.Endpoint{
+			&gomavlib.EndpointSerial{
 				Device: "/dev/ttyUSB0",
 				Baud:   57600,
 			},

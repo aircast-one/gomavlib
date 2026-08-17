@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/bluenviron/gomavlib/v3/pkg/message"
+	"github.com/aircast-one/gomavlib/v4/pkg/message"
 )
 
 const (

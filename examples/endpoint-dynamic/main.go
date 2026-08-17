@@ -1,6 +1,7 @@
+// Package main contains an example.
+//
 // This example demonstrates dynamic endpoint management in gomavlib.
 // You can add and remove endpoints at runtime without restarting the node.
-
 package main
 
 import (
@@ -8,15 +9,15 @@ import (
 	"log"
 	"time"
 
-	"github.com/bluenviron/gomavlib/v3"
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v4"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/common"
 )
 
 func main() {
 	// Create a node with an initial endpoint
 	node := &gomavlib.Node{
-		Endpoints: []gomavlib.EndpointConf{
-			gomavlib.EndpointUDPServer{Address: "127.0.0.1:5600"},
+		Endpoints: []gomavlib.Endpoint{
+			&gomavlib.EndpointUDPServer{Address: "127.0.0.1:5600"},
 		},
 		Dialect:     common.Dialect,
 		OutVersion:  gomavlib.V2,
@@ -50,7 +51,7 @@ func main() {
 	// After 2 seconds, add a new WebSocket endpoint
 	time.Sleep(2 * time.Second)
 	log.Println("Adding WebSocket endpoint...")
-	err = node.AddEndpoint(gomavlib.EndpointWebSocket{
+	err = node.AddEndpoint(&gomavlib.EndpointWebSocket{
 		URL:   "ws://localhost:8080/mavlink",
 		Label: "dynamic-websocket",
 	})
@@ -63,7 +64,7 @@ func main() {
 	// After another 3 seconds, add a TCP client endpoint
 	time.Sleep(3 * time.Second)
 	log.Println("Adding TCP client endpoint...")
-	err = node.AddEndpoint(gomavlib.EndpointTCPClient{Address: "127.0.0.1:5601"})
+	err = node.AddEndpoint(&gomavlib.EndpointTCPClient{Address: "127.0.0.1:5601"})
 	if err != nil {
 		log.Printf("Failed to add TCP endpoint: %v", err)
 	} else {

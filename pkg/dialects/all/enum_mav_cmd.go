@@ -41,6 +41,16 @@ const (
 	MAV_CMD_DO_FOLLOW_REPOSITION MAV_CMD = 33
 	// Start orbiting on the circumference of a circle defined by the parameters. Setting values to NaN/INT32_MAX (as appropriate) results in using defaults.
 	MAV_CMD_DO_ORBIT MAV_CMD = 34
+	// Fly a figure eight path as defined by the parameters.
+	// Set parameters to NaN/INT32_MAX (as appropriate) to use system-default values.
+	// The command is intended for fixed wing vehicles (and VTOL hybrids flying in fixed-wing mode), allowing POI tracking for gimbals that don't support infinite rotation.
+	// This command only defines the flight path. Speed should be set independently (use e.g. MAV_CMD_DO_CHANGE_SPEED).
+	// Yaw and other degrees of freedom are not specified, and will be flight-stack specific (on vehicles where they can be controlled independent of the heading).
+	MAV_CMD_DO_FIGURE_EIGHT MAV_CMD = 35
+	// Circular arc path waypoint.
+	// This defines the end/exit point and angle (param1) of an arc path from the previous waypoint. A position is required before this command to define the start of the arc (e.g. current position, a MAV_CMD_NAV_WAYPOINT, or a MAV_CMD_NAV_ARC_WAYPOINT).
+	// The resulting path is a circular arc in the NE frame, with the difference in height being defined by the difference in waypoint altitudes.
+	MAV_CMD_NAV_ARC_WAYPOINT MAV_CMD = 36
 	// Sets the region of interest (ROI) for a sensor set or the vehicle itself. This can then be used by the vehicle's control system to control the vehicle attitude and the attitude of various sensors such as cameras.
 	MAV_CMD_NAV_ROI MAV_CMD = 80
 	// Control autonomous path planning on the MAV.
@@ -82,7 +92,7 @@ const (
 	MAV_CMD_DO_SET_HOME MAV_CMD = 179
 	// Set a system parameter.  Caution!  Use of this command requires knowledge of the numeric enumeration value of the parameter.
 	MAV_CMD_DO_SET_PARAMETER MAV_CMD = 180
-	// Set a relay to a condition.
+	// Set a relay to a condition. The current value may optionally be reported using RELAY_STATUS.
 	MAV_CMD_DO_SET_RELAY MAV_CMD = 181
 	// Cycle a relay on and off for a desired number of cycles with a desired period.
 	MAV_CMD_DO_REPEAT_RELAY MAV_CMD = 182
@@ -230,7 +240,7 @@ const (
 	// Configures illuminator settings. An illuminator is a light source that is used for lighting up dark areas external to the system: e.g. a torch or searchlight (as opposed to a light source for illuminating the system itself, e.g. an indicator light).
 	MAV_CMD_DO_ILLUMINATOR_CONFIGURE MAV_CMD = 406
 	// Request the home position from the vehicle.
-	// The vehicle will ACK the command and then emit the HOME_POSITION message.
+	// The vehicle will ACK the command and emit the HOME_POSITION message.
 	MAV_CMD_GET_HOME_POSITION MAV_CMD = 410
 	// Inject artificial failure for testing purposes. Note that autopilots should implement an additional protection before accepting this command such as a specific param setting.
 	MAV_CMD_INJECT_FAILURE MAV_CMD = 420
@@ -279,6 +289,12 @@ const (
 	MAV_CMD_JUMP_TAG MAV_CMD = 600
 	// Jump to the matching tag in the mission list. Repeat this action for the specified number of times. A mission should contain a single matching tag for each jump. If this is not the case then a jump to a missing tag should complete the mission, and a jump where there are multiple matching tags should always select the one with the lowest mission sequence number.
 	MAV_CMD_DO_JUMP_TAG MAV_CMD = 601
+	// Sets the GNSS coordinates of the vehicle local origin (0,0,0) position.
+	// Vehicle should emit GPS_GLOBAL_ORIGIN irrespective of whether the origin is changed.
+	// This enables transform between the local coordinate frame and the global (GNSS) coordinate frame, which may be necessary when (for example) indoor and outdoor settings are connected and the MAV should move from in- to outdoor.
+	// This command supersedes SET_GPS_GLOBAL_ORIGIN.
+	// Should be sent in a COMMAND_INT (Expected frame is MAV_FRAME_GLOBAL, and this should be assumed when sent in COMMAND_LONG).
+	MAV_CMD_DO_SET_GLOBAL_ORIGIN MAV_CMD = 611
 	// Set gimbal manager pitch/yaw setpoints (low rate command). It is possible to set combinations of the values below. E.g. an angle as well as a desired angular rate can be used to get to this angle at a certain angular rate, or an angular rate only will result in continuous turning. NaN is to be used to signal unset. Note: only the gimbal manager will react to this command - it will be ignored by a gimbal device. Use GIMBAL_MANAGER_SET_PITCHYAW if you need to stream pitch/yaw setpoints at higher rate.
 	MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW MAV_CMD = 1000
 	// Gimbal configuration to set which sysid/compid is in primary and secondary control.
@@ -340,7 +356,7 @@ const (
 	MAV_CMD_DO_VTOL_TRANSITION MAV_CMD = 3000
 	// Request authorization to arm the vehicle to a external entity, the arm authorizer is responsible to request all data that is needs from the vehicle before authorize or deny the request.
 	// If approved the COMMAND_ACK message progress field should be set with period of time that this authorization is valid in seconds.
-	// If the authorization is denied COMMAND_ACK.result_param2 should be set with one of the reasons in ARM_AUTH_DENIED_REASON.
+	// If the authorization is denied COMMAND_ACK.result_param2 should be set with one of the reasons in MAV_ARM_AUTH_DENIED_REASON.
 	MAV_CMD_ARM_AUTHORIZATION_REQUEST MAV_CMD = 3001
 	// This command sets the submode to standard guided when vehicle is in guided mode. The vehicle holds position and altitude and the user can input the desired velocities along all three axes.
 	MAV_CMD_SET_GUIDED_SUBMODE_STANDARD MAV_CMD = 4000
@@ -376,6 +392,12 @@ const (
 	MAV_CMD_FIXED_MAG_CAL_YAW MAV_CMD = 42006
 	// Command to operate winch.
 	MAV_CMD_DO_WINCH MAV_CMD = 42600
+	// Change flight speed at a given rate. This slews the vehicle at a controllable rate between it's previous speed and the new one.
+	MAV_CMD_GUIDED_CHANGE_SPEED MAV_CMD = 43000
+	// Change target altitude at a given rate. This slews the vehicle at a controllable rate between it's previous altitude and the new one.
+	MAV_CMD_GUIDED_CHANGE_ALTITUDE MAV_CMD = 43001
+	// Change to target direction at a given rate, overriding previous heading/s. This slews the vehicle at a controllable rate between its previous heading and the new one.
+	MAV_CMD_GUIDED_CHANGE_HEADING MAV_CMD = 43002
 	// Provide an external position estimate for use when dead-reckoning. This is meant to be used for occasional position resets that may be provided by a external system such as a remote pilot using landmarks over a video link.
 	MAV_CMD_EXTERNAL_POSITION_ESTIMATE MAV_CMD = 43003
 	// User defined waypoint item. Ground Station will show the Vehicle as flying through this item.
@@ -408,7 +430,7 @@ const (
 	MAV_CMD_USER_4 MAV_CMD = 31013
 	// User defined command. Ground Station will not show the Vehicle as flying through this item. Example: MAV_CMD_DO_SET_PARAMETER item.
 	MAV_CMD_USER_5 MAV_CMD = 31014
-	// Request forwarding of CAN packets from the given CAN bus to this component. CAN Frames are sent using CAN_FRAME and CANFD_FRAME messages
+	// Request forwarding of CAN packets from the given CAN bus to this component via this MAVLink channel. CAN Frames are sent using CAN_FRAME and CANFD_FRAME messages
 	MAV_CMD_CAN_FORWARD MAV_CMD = 32000
 	// Set Loweheiser desired states
 	MAV_CMD_LOWEHEISER_SET_STATE MAV_CMD = 10151
@@ -469,54 +491,28 @@ const (
 	MAV_CMD_NAV_SCRIPT_TIME MAV_CMD = 42702
 	// Maintain an attitude for a specified time.
 	MAV_CMD_NAV_ATTITUDE_TIME MAV_CMD = 42703
-	// Change flight speed at a given rate. This slews the vehicle at a controllable rate between it's previous speed and the new one. (affects GUIDED only. Outside GUIDED, aircraft ignores these commands. Designed for onboard companion-computer command-and-control, not normally operator/GCS control.)
-	MAV_CMD_GUIDED_CHANGE_SPEED MAV_CMD = 43000
-	// Change target altitude at a given rate. This slews the vehicle at a controllable rate between it's previous altitude and the new one. (affects GUIDED only. Outside GUIDED, aircraft ignores these commands. Designed for onboard companion-computer command-and-control, not normally operator/GCS control.)
-	MAV_CMD_GUIDED_CHANGE_ALTITUDE MAV_CMD = 43001
-	// Change to target heading at a given rate, overriding previous heading/s. This slews the vehicle at a controllable rate between it's previous heading and the new one. (affects GUIDED only. Exiting GUIDED returns aircraft to normal behaviour defined elsewhere. Designed for onboard companion-computer command-and-control, not normally operator/GCS control.)
-	MAV_CMD_GUIDED_CHANGE_HEADING MAV_CMD = 43002
 	// Provide a value for height above ground level. This can be used for things like fixed wing and VTOL landing.
 	MAV_CMD_SET_HAGL MAV_CMD = 43005
 	// Mission command to reset Maximum Power Point Tracker (MPPT)
 	MAV_CMD_RESET_MPPT MAV_CMD = 40001
 	// Mission command to perform a power cycle on payload
 	MAV_CMD_PAYLOAD_CONTROL MAV_CMD = 40002
-	// Fly a figure eight path as defined by the parameters.
-	// Set parameters to NaN/INT32_MAX (as appropriate) to use system-default values.
-	// The command is intended for fixed wing vehicles (and VTOL hybrids flying in fixed-wing mode), allowing POI tracking for gimbals that don't support infinite rotation.
-	// This command only defines the flight path. Speed should be set independently (use e.g. MAV_CMD_DO_CHANGE_SPEED).
-	// Yaw and other degrees of freedom are not specified, and will be flight-stack specific (on vehicles where they can be controlled independent of the heading).
-	MAV_CMD_DO_FIGURE_EIGHT MAV_CMD = 35
-	// Circular arc path waypoint.
-	// This defines the end/exit point and angle (param1) of an arc path from the previous waypoint. A position is required before this command to define the start of the arc (e.g. current position, a MAV_CMD_NAV_WAYPOINT, or a MAV_CMD_NAV_ARC_WAYPOINT).
-	// The resulting path is a circular arc in the NE frame, with the difference in height being defined by the difference in waypoint altitudes.
-	MAV_CMD_NAV_ARC_WAYPOINT MAV_CMD = 36
-	// Request a target system to start an upgrade of one (or all) of its components.
-	// For example, the command might be sent to a companion computer to cause it to upgrade a connected flight controller.
-	// The system doing the upgrade will report progress using the normal command protocol sequence for a long running operation.
-	// Command protocol information: https://mavlink.io/en/services/command.html.
-	MAV_CMD_DO_UPGRADE MAV_CMD = 247
 	// Command to test groups of related actuators together.
 	// This might include groups such as the actuators that contribute to roll, pitch, or yaw torque, actuators that contribute to thrust in x, y, z axis, tilt mechanisms, flaps and spoilers, and so on.
 	// This is similar to MAV_CMD_ACTUATOR_TEST, except that multiple actuators may be affected.
 	// Different groups may also affect the same actuators (as in the case of controls that affect torque in different axes).
-	// Autopilots must NACK this command with MAV_RESULT_TEMPORARILY_REJECTED while armed.
 	MAV_CMD_ACTUATOR_GROUP_TEST MAV_CMD = 309
 	// Set system and component id.
 	// This allows moving of a system and all its components to a new system id, or moving a particular component to a new system/component id.
 	// Recipients must reject command addressed to broadcast system ID.
 	MAV_CMD_DO_SET_SYS_CMP_ID MAV_CMD = 610
-	// Sets the GNSS coordinates of the vehicle local origin (0,0,0) position.
-	// Vehicle should emit GPS_GLOBAL_ORIGIN irrespective of whether the origin is changed.
-	// This enables transform between the local coordinate frame and the global (GNSS) coordinate frame, which may be necessary when (for example) indoor and outdoor settings are connected and the MAV should move from in- to outdoor.
-	// This command supersedes SET_GPS_GLOBAL_ORIGIN.
-	// Should be sent in a COMMAND_INT (Expected frame is MAV_FRAME_GLOBAL, and this should be assumed when sent in COMMAND_LONG).
-	MAV_CMD_DO_SET_GLOBAL_ORIGIN MAV_CMD = 611
 	// Enable Moving Target Indicators (MTI) on streamed video.
 	// Support for feature can be checked with CAMERA_CAP_FLAGS_HAS_MTI, and disabled with MAV_CMD_CAMERA_STOP_MTI.
 	MAV_CMD_CAMERA_START_MTI MAV_CMD = 2020
 	// Disable Moving Target Indicators (MTI) on streamed video.
 	MAV_CMD_CAMERA_STOP_MTI MAV_CMD = 2021
+	// Circular fence area centered on home. The vehicle must stay inside this area. If home is moved, the fence moves.
+	MAV_CMD_NAV_FENCE_HOME_CIRCLE_INCLUSION MAV_CMD = 5005
 	// Used to manually set/unset emergency status for remote id.
 	// This is for compliance with MOC ASTM docs, specifically F358 section 7.7: "Emergency Status Indicator".
 	// The requirement can also be satisfied by automatic setting of the emergency status by flight stack, and that approach is preferred.
@@ -525,27 +521,38 @@ const (
 	// Set an external estimate of wind direction and speed.
 	// This might be used to provide an initial wind estimate to the estimator (EKF) in the case where the vehicle is wind dead-reckoning, extending the time when operating without GPS before before position drift builds to an unsafe level. For this use case the command might reasonably be sent every few minutes when operating at altitude, and the value is cleared if the estimator resets itself.
 	MAV_CMD_EXTERNAL_WIND_ESTIMATE MAV_CMD = 43004
+	// Enable or disable a specific estimator sensor fusion source at runtime.
+	// This allows a GCS or companion computer to dynamically control which sensors the estimator fuses without changing parameters.
+	MAV_CMD_ESTIMATOR_SENSOR_ENABLE MAV_CMD = 43006
 	// Set an external estimate of vehicle attitude.
 	// This might be used to provide an initial attitude (especially heading) estimate to the estimator (EKF). Angles are defined in a 3-2-1 (yaw-pitch-roll) intrinsic Tait-Bryan sequence.
 	MAV_CMD_EXTERNAL_ATTITUDE_ESTIMATE MAV_CMD = 620
-	// Request GCS control of a system (or of a specific component in a system).
-	// A controlled system should only accept MAVLink commands and command-like messages that are sent by its controlling GCS, or from other components with the same system id.
-	// Commands from other systems should be rejected with MAV_RESULT_FAILED (except for this command, which may be acknowledged with MAV_RESULT_ACCEPTED if control is granted).
-	// Command-like messages should be ignored (or rejected if that is supported by their associated protocol).
+	// Request exclusive control of a system or special system feature by a GCS.
+	// The operator control protocol supports two modes:
+	// - In single-owner mode there is a single GCS "owner" that can send state changing operations to the whole system, and this command can be used to request takeover of that ownership role.
+	// - In multi-owner mode the flight stack allows multiple GCS to be "owners" and send (most) state changing operations (which GCS those are is implementation-dependent, and not controlled by this protocol).
+	// However only one GCS owner can control manual input of the vehicle: this command can be used to request takeover of that ownership role.
+	// A controlled system should only accept MAVLink operations that change the state of the vehicle, such as commands and command-like messages, which are sent by its controlling GCS(s) (or from other components in its own system/with the same system id, such as a companion computer).
+	// Commands to control the vehicle from other systems should be rejected with MAV_RESULT_NOT_IN_CONTROL (except for this command, which may be acknowledged with MAV_RESULT_ACCEPTED if control is granted).
+	// Messages and commands that don't control or change vehicle movement or functionality, such as telemetry requests, may still be send from (and to) a controlled system.
 	// GCS control of the whole system is managed via a single component that we will refer to here as the "system manager component".
 	// This component streams the CONTROL_STATUS message and sets the GCS_CONTROL_STATUS_FLAGS_SYSTEM_MANAGER flag.
-	// Other components in the system should monitor for the CONTROL_STATUS message with this flag, and set their controlling GCS to match its published system id.
+	// Other components in the system should monitor for the CONTROL_STATUS message with this flag, and set their controlling GCS(s) to match its published system id(s).
 	// A GCS that wants to control the system should also monitor for the same message and flag, and address the MAV_CMD_REQUEST_OPERATOR_CONTROL to its component id.
 	// Note that integrators are required to ensure that there is only one system manager component in the system (i.e. one component emitting the message with GCS_CONTROL_STATUS_FLAGS_SYSTEM_MANAGER set).
 	// The MAV_CMD_REQUEST_OPERATOR_CONTROL command is sent by a GCS to the system manager component to request or release control of a system, specifying whether subsequent takeover requests from another GCS are automatically granted, or require permission.
-	// The system manager component should grant control to the GCS if the system does not require takeover permission (or is uncontrolled) and ACK the request with MAV_RESULT_ACCEPTED.
-	// The system manager component should then stream CONTROL_STATUS indicating its controlling system: all other components with the same system id should monitor this message and set their own controlling GCS to match that of the system manager component.
-	// If the system manager component cannot grant control (because takeover requires permission), the request should be rejected with MAV_RESULT_FAILED.
-	// The system manager component should then send this same command to the current owning GCS in order to notify of the request.
-	// The owning GCS would ACK with MAV_RESULT_ACCEPTED, and might choose to release control of the vehicle, or re-request control with the takeover bit set to allow permission.
-	// In case it choses to re-request control with takeover bit set to allow permission, requester GCS will only have 10 seconds to get control, otherwise owning GCS will re-request control with takeover bit set to disallow permission, and requester GCS will need repeat the request if still interested in getting control.
+	// The command may request control for a single GCS system ID or a range of GCS system IDs: the sender of the command must have a system id that is in the requested range.
+	// The system manager component should grant control to the requested GCS(s) if the system does not require takeover permission (or is uncontrolled) and ACK the request with MAV_RESULT_ACCEPTED.
+	// The system manager component should then stream CONTROL_STATUS indicating its controlling system(s): all other components in the system (with the same system id) should monitor this message and set their own controlling GCS(s) to match that of the system manager component.
+	// If the system manager component cannot grant control because takeover requires permission, the request should be rejected with MAV_RESULT_FAILED.
+	// The system manager component should then send this same command to the owning GCS with the lowest system ID that has a heartbeat, in order to notify of the request.
+	// That owning GCS must ACK with MAV_RESULT_ACCEPTED, and may choose to release control of the vehicle, or re-request control with the takeover bit set to allow permission.
+	// In case it choses to re-request control with takeover bit set to allow permission, the requester GCS will only have 10 seconds to get control, otherwise owning GCS will re-request control with takeover bit set to disallow permission, and requester GCS will need repeat the request if still interested in getting control.
 	// Note that the pilots of both GCS should coordinate safe handover offline.
-	// Note that in most systems the only controlled component will be the "system manager component", and that will be the autopilot.
+	// While any owning GCS are connected the system should consider itself connected to a GCS, and still owned by all GCS (even those that are not connected).
+	// If all owning GCS are disconnected the vehicle should GCS loss failsafe, and broadcast a CONTROL_STATUS indicating that it has no owner(s).
+	// In simultaneous-owner scenarios this allows an owner to disconnect and reconnect without the vehicle failsafing, provided at least one owner is connected.
+	// Note that in most systems the only controlled component will be the "system manager component", and that will be the autopilot (although it could be a companion computer).
 	// However separate GCS control of a particular component is also permitted, if supported by the component.
 	// In this case the GCS will address MAV_CMD_REQUEST_OPERATOR_CONTROL to the specific component it wants to control.
 	// The component will then stream CONTROL_STATUS for its controlling GCS (it must not set GCS_CONTROL_STATUS_FLAGS_SYSTEM_MANAGER).
@@ -593,6 +600,8 @@ var value_to_label_MAV_CMD = map[MAV_CMD]string{
 	MAV_CMD_DO_FOLLOW:                                  "MAV_CMD_DO_FOLLOW",
 	MAV_CMD_DO_FOLLOW_REPOSITION:                       "MAV_CMD_DO_FOLLOW_REPOSITION",
 	MAV_CMD_DO_ORBIT:                                   "MAV_CMD_DO_ORBIT",
+	MAV_CMD_DO_FIGURE_EIGHT:                            "MAV_CMD_DO_FIGURE_EIGHT",
+	MAV_CMD_NAV_ARC_WAYPOINT:                           "MAV_CMD_NAV_ARC_WAYPOINT",
 	MAV_CMD_NAV_ROI:                                    "MAV_CMD_NAV_ROI",
 	MAV_CMD_NAV_PATHPLANNING:                           "MAV_CMD_NAV_PATHPLANNING",
 	MAV_CMD_NAV_SPLINE_WAYPOINT:                        "MAV_CMD_NAV_SPLINE_WAYPOINT",
@@ -688,6 +697,7 @@ var value_to_label_MAV_CMD = map[MAV_CMD]string{
 	MAV_CMD_SET_CAMERA_SOURCE:                          "MAV_CMD_SET_CAMERA_SOURCE",
 	MAV_CMD_JUMP_TAG:                                   "MAV_CMD_JUMP_TAG",
 	MAV_CMD_DO_JUMP_TAG:                                "MAV_CMD_DO_JUMP_TAG",
+	MAV_CMD_DO_SET_GLOBAL_ORIGIN:                       "MAV_CMD_DO_SET_GLOBAL_ORIGIN",
 	MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW:                 "MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW",
 	MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE:                "MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE",
 	MAV_CMD_IMAGE_START_CAPTURE:                        "MAV_CMD_IMAGE_START_CAPTURE",
@@ -726,6 +736,9 @@ var value_to_label_MAV_CMD = map[MAV_CMD]string{
 	MAV_CMD_PAYLOAD_CONTROL_DEPLOY:                     "MAV_CMD_PAYLOAD_CONTROL_DEPLOY",
 	MAV_CMD_FIXED_MAG_CAL_YAW:                          "MAV_CMD_FIXED_MAG_CAL_YAW",
 	MAV_CMD_DO_WINCH:                                   "MAV_CMD_DO_WINCH",
+	MAV_CMD_GUIDED_CHANGE_SPEED:                        "MAV_CMD_GUIDED_CHANGE_SPEED",
+	MAV_CMD_GUIDED_CHANGE_ALTITUDE:                     "MAV_CMD_GUIDED_CHANGE_ALTITUDE",
+	MAV_CMD_GUIDED_CHANGE_HEADING:                      "MAV_CMD_GUIDED_CHANGE_HEADING",
 	MAV_CMD_EXTERNAL_POSITION_ESTIMATE:                 "MAV_CMD_EXTERNAL_POSITION_ESTIMATE",
 	MAV_CMD_WAYPOINT_USER_1:                            "MAV_CMD_WAYPOINT_USER_1",
 	MAV_CMD_WAYPOINT_USER_2:                            "MAV_CMD_WAYPOINT_USER_2",
@@ -772,22 +785,17 @@ var value_to_label_MAV_CMD = map[MAV_CMD]string{
 	MAV_CMD_SCRIPTING:                                  "MAV_CMD_SCRIPTING",
 	MAV_CMD_NAV_SCRIPT_TIME:                            "MAV_CMD_NAV_SCRIPT_TIME",
 	MAV_CMD_NAV_ATTITUDE_TIME:                          "MAV_CMD_NAV_ATTITUDE_TIME",
-	MAV_CMD_GUIDED_CHANGE_SPEED:                        "MAV_CMD_GUIDED_CHANGE_SPEED",
-	MAV_CMD_GUIDED_CHANGE_ALTITUDE:                     "MAV_CMD_GUIDED_CHANGE_ALTITUDE",
-	MAV_CMD_GUIDED_CHANGE_HEADING:                      "MAV_CMD_GUIDED_CHANGE_HEADING",
 	MAV_CMD_SET_HAGL:                                   "MAV_CMD_SET_HAGL",
 	MAV_CMD_RESET_MPPT:                                 "MAV_CMD_RESET_MPPT",
 	MAV_CMD_PAYLOAD_CONTROL:                            "MAV_CMD_PAYLOAD_CONTROL",
-	MAV_CMD_DO_FIGURE_EIGHT:                            "MAV_CMD_DO_FIGURE_EIGHT",
-	MAV_CMD_NAV_ARC_WAYPOINT:                           "MAV_CMD_NAV_ARC_WAYPOINT",
-	MAV_CMD_DO_UPGRADE:                                 "MAV_CMD_DO_UPGRADE",
 	MAV_CMD_ACTUATOR_GROUP_TEST:                        "MAV_CMD_ACTUATOR_GROUP_TEST",
 	MAV_CMD_DO_SET_SYS_CMP_ID:                          "MAV_CMD_DO_SET_SYS_CMP_ID",
-	MAV_CMD_DO_SET_GLOBAL_ORIGIN:                       "MAV_CMD_DO_SET_GLOBAL_ORIGIN",
 	MAV_CMD_CAMERA_START_MTI:                           "MAV_CMD_CAMERA_START_MTI",
 	MAV_CMD_CAMERA_STOP_MTI:                            "MAV_CMD_CAMERA_STOP_MTI",
+	MAV_CMD_NAV_FENCE_HOME_CIRCLE_INCLUSION:            "MAV_CMD_NAV_FENCE_HOME_CIRCLE_INCLUSION",
 	MAV_CMD_ODID_SET_EMERGENCY:                         "MAV_CMD_ODID_SET_EMERGENCY",
 	MAV_CMD_EXTERNAL_WIND_ESTIMATE:                     "MAV_CMD_EXTERNAL_WIND_ESTIMATE",
+	MAV_CMD_ESTIMATOR_SENSOR_ENABLE:                    "MAV_CMD_ESTIMATOR_SENSOR_ENABLE",
 	MAV_CMD_EXTERNAL_ATTITUDE_ESTIMATE:                 "MAV_CMD_EXTERNAL_ATTITUDE_ESTIMATE",
 	MAV_CMD_REQUEST_OPERATOR_CONTROL:                   "MAV_CMD_REQUEST_OPERATOR_CONTROL",
 	MAV_CMD_STORM32_DO_GIMBAL_MANAGER_CONTROL_PITCHYAW: "MAV_CMD_STORM32_DO_GIMBAL_MANAGER_CONTROL_PITCHYAW",
@@ -819,6 +827,8 @@ var label_to_value_MAV_CMD = map[string]MAV_CMD{
 	"MAV_CMD_DO_FOLLOW":                                  MAV_CMD_DO_FOLLOW,
 	"MAV_CMD_DO_FOLLOW_REPOSITION":                       MAV_CMD_DO_FOLLOW_REPOSITION,
 	"MAV_CMD_DO_ORBIT":                                   MAV_CMD_DO_ORBIT,
+	"MAV_CMD_DO_FIGURE_EIGHT":                            MAV_CMD_DO_FIGURE_EIGHT,
+	"MAV_CMD_NAV_ARC_WAYPOINT":                           MAV_CMD_NAV_ARC_WAYPOINT,
 	"MAV_CMD_NAV_ROI":                                    MAV_CMD_NAV_ROI,
 	"MAV_CMD_NAV_PATHPLANNING":                           MAV_CMD_NAV_PATHPLANNING,
 	"MAV_CMD_NAV_SPLINE_WAYPOINT":                        MAV_CMD_NAV_SPLINE_WAYPOINT,
@@ -914,6 +924,7 @@ var label_to_value_MAV_CMD = map[string]MAV_CMD{
 	"MAV_CMD_SET_CAMERA_SOURCE":                          MAV_CMD_SET_CAMERA_SOURCE,
 	"MAV_CMD_JUMP_TAG":                                   MAV_CMD_JUMP_TAG,
 	"MAV_CMD_DO_JUMP_TAG":                                MAV_CMD_DO_JUMP_TAG,
+	"MAV_CMD_DO_SET_GLOBAL_ORIGIN":                       MAV_CMD_DO_SET_GLOBAL_ORIGIN,
 	"MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW":                 MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW,
 	"MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE":                MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE,
 	"MAV_CMD_IMAGE_START_CAPTURE":                        MAV_CMD_IMAGE_START_CAPTURE,
@@ -952,6 +963,9 @@ var label_to_value_MAV_CMD = map[string]MAV_CMD{
 	"MAV_CMD_PAYLOAD_CONTROL_DEPLOY":                     MAV_CMD_PAYLOAD_CONTROL_DEPLOY,
 	"MAV_CMD_FIXED_MAG_CAL_YAW":                          MAV_CMD_FIXED_MAG_CAL_YAW,
 	"MAV_CMD_DO_WINCH":                                   MAV_CMD_DO_WINCH,
+	"MAV_CMD_GUIDED_CHANGE_SPEED":                        MAV_CMD_GUIDED_CHANGE_SPEED,
+	"MAV_CMD_GUIDED_CHANGE_ALTITUDE":                     MAV_CMD_GUIDED_CHANGE_ALTITUDE,
+	"MAV_CMD_GUIDED_CHANGE_HEADING":                      MAV_CMD_GUIDED_CHANGE_HEADING,
 	"MAV_CMD_EXTERNAL_POSITION_ESTIMATE":                 MAV_CMD_EXTERNAL_POSITION_ESTIMATE,
 	"MAV_CMD_WAYPOINT_USER_1":                            MAV_CMD_WAYPOINT_USER_1,
 	"MAV_CMD_WAYPOINT_USER_2":                            MAV_CMD_WAYPOINT_USER_2,
@@ -998,22 +1012,17 @@ var label_to_value_MAV_CMD = map[string]MAV_CMD{
 	"MAV_CMD_SCRIPTING":                                  MAV_CMD_SCRIPTING,
 	"MAV_CMD_NAV_SCRIPT_TIME":                            MAV_CMD_NAV_SCRIPT_TIME,
 	"MAV_CMD_NAV_ATTITUDE_TIME":                          MAV_CMD_NAV_ATTITUDE_TIME,
-	"MAV_CMD_GUIDED_CHANGE_SPEED":                        MAV_CMD_GUIDED_CHANGE_SPEED,
-	"MAV_CMD_GUIDED_CHANGE_ALTITUDE":                     MAV_CMD_GUIDED_CHANGE_ALTITUDE,
-	"MAV_CMD_GUIDED_CHANGE_HEADING":                      MAV_CMD_GUIDED_CHANGE_HEADING,
 	"MAV_CMD_SET_HAGL":                                   MAV_CMD_SET_HAGL,
 	"MAV_CMD_RESET_MPPT":                                 MAV_CMD_RESET_MPPT,
 	"MAV_CMD_PAYLOAD_CONTROL":                            MAV_CMD_PAYLOAD_CONTROL,
-	"MAV_CMD_DO_FIGURE_EIGHT":                            MAV_CMD_DO_FIGURE_EIGHT,
-	"MAV_CMD_NAV_ARC_WAYPOINT":                           MAV_CMD_NAV_ARC_WAYPOINT,
-	"MAV_CMD_DO_UPGRADE":                                 MAV_CMD_DO_UPGRADE,
 	"MAV_CMD_ACTUATOR_GROUP_TEST":                        MAV_CMD_ACTUATOR_GROUP_TEST,
 	"MAV_CMD_DO_SET_SYS_CMP_ID":                          MAV_CMD_DO_SET_SYS_CMP_ID,
-	"MAV_CMD_DO_SET_GLOBAL_ORIGIN":                       MAV_CMD_DO_SET_GLOBAL_ORIGIN,
 	"MAV_CMD_CAMERA_START_MTI":                           MAV_CMD_CAMERA_START_MTI,
 	"MAV_CMD_CAMERA_STOP_MTI":                            MAV_CMD_CAMERA_STOP_MTI,
+	"MAV_CMD_NAV_FENCE_HOME_CIRCLE_INCLUSION":            MAV_CMD_NAV_FENCE_HOME_CIRCLE_INCLUSION,
 	"MAV_CMD_ODID_SET_EMERGENCY":                         MAV_CMD_ODID_SET_EMERGENCY,
 	"MAV_CMD_EXTERNAL_WIND_ESTIMATE":                     MAV_CMD_EXTERNAL_WIND_ESTIMATE,
+	"MAV_CMD_ESTIMATOR_SENSOR_ENABLE":                    MAV_CMD_ESTIMATOR_SENSOR_ENABLE,
 	"MAV_CMD_EXTERNAL_ATTITUDE_ESTIMATE":                 MAV_CMD_EXTERNAL_ATTITUDE_ESTIMATE,
 	"MAV_CMD_REQUEST_OPERATOR_CONTROL":                   MAV_CMD_REQUEST_OPERATOR_CONTROL,
 	"MAV_CMD_STORM32_DO_GIMBAL_MANAGER_CONTROL_PITCHYAW": MAV_CMD_STORM32_DO_GIMBAL_MANAGER_CONTROL_PITCHYAW,

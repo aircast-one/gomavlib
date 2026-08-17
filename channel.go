@@ -4,16 +4,54 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"io"
 
-	"github.com/bluenviron/gomavlib/v3/pkg/frame"
-	"github.com/bluenviron/gomavlib/v3/pkg/message"
-	"github.com/bluenviron/gomavlib/v3/pkg/streamwriter"
+	"github.com/aircast-one/gomavlib/v4/pkg/frame"
+	"github.com/aircast-one/gomavlib/v4/pkg/message"
+	"github.com/aircast-one/gomavlib/v4/pkg/streamwriter"
 )
 
 const (
-	writeBufferSize = 64
+	writeBufferSize        = 64
+	datagramReadBufferSize = 512
 )
+
+type datagramReader struct {
+	r   io.ReadCloser
+	buf []byte
+	pos int
+}
+
+func (r *datagramReader) ReadPacket() error {
+	if r.buf == nil {
+		r.buf = make([]byte, datagramReadBufferSize)
+	}
+
+	n, err := r.r.Read(r.buf[:datagramReadBufferSize])
+	if n == 0 && err != nil {
+		return err
+	}
+
+	r.buf = r.buf[:n]
+	r.pos = 0
+
+	return nil
+}
+
+func (r *datagramReader) Read(p []byte) (n int, err error) {
+	n = copy(p, r.buf[r.pos:])
+	r.pos += n
+	if n == 0 && r.pos >= len(r.buf) {
+		return 0, fmt.Errorf("packet is too short")
+	}
+	return n, nil
+}
+
+type readWriter struct {
+	io.Reader
+	io.Writer
+}
 
 func randomByte() (byte, error) {
 	var buf [1]byte
@@ -26,19 +64,21 @@ func randomByte() (byte, error) {
 // For instance, a TCP client endpoint creates a single channel, while a TCP
 // server endpoint creates a channel for each incoming connection.
 type Channel struct {
-	node     *Node
-	endpoint Endpoint
-	label    string
-	rwc      io.ReadWriteCloser
+	node       *Node
+	endpoint   Endpoint
+	label      string
+	rwc        io.ReadWriteCloser
+	isDatagram bool
 
-	ctx          context.Context
-	ctxCancel    func()
-	frameWriter  *frame.ReadWriter
-	streamWriter *streamwriter.Writer
-	running      bool
+	datagramReader  *datagramReader
+	ctx             context.Context
+	ctxCancel       func()
+	frameReadWriter *frame.ReadWriter
+	streamWriter    *streamwriter.Writer
+	running         bool
 
 	// in
-	chWrite chan interface{}
+	chWrite chan any
 
 	// out
 	done chan struct{}
@@ -50,18 +90,29 @@ func (ch *Channel) initialize() error {
 		return err
 	}
 
-	ch.frameWriter = &frame.ReadWriter{
-		ByteReadWriter: ch.rwc,
+	var rw io.ReadWriter
+	if ch.isDatagram {
+		ch.datagramReader = &datagramReader{r: ch.rwc}
+		rw = &readWriter{
+			Reader: ch.datagramReader,
+			Writer: ch.rwc,
+		}
+	} else {
+		rw = ch.rwc
+	}
+
+	ch.frameReadWriter = &frame.ReadWriter{
+		ByteReadWriter: rw,
 		DialectRW:      ch.node.dialectRW,
 		InKey:          ch.node.InKey,
 	}
-	err = ch.frameWriter.Initialize()
+	err = ch.frameReadWriter.Initialize()
 	if err != nil {
 		return err
 	}
 
 	ch.streamWriter = &streamwriter.Writer{
-		FrameWriter: ch.frameWriter.Writer,
+		FrameWriter: ch.frameReadWriter.Writer,
 		SystemID:    ch.node.OutSystemID,
 		Version: func() streamwriter.Version {
 			if ch.node.OutVersion == V2 {
@@ -79,7 +130,7 @@ func (ch *Channel) initialize() error {
 	}
 
 	ch.ctx, ch.ctxCancel = context.WithCancel(context.Background())
-	ch.chWrite = make(chan interface{}, writeBufferSize)
+	ch.chWrite = make(chan any, writeBufferSize)
 	ch.done = make(chan struct{})
 
 	return nil
@@ -149,22 +200,44 @@ func (ch *Channel) runReader() error {
 	ch.node.pushEvent(&EventChannelOpen{ch})
 
 	for {
-		fr, err := ch.frameWriter.Read()
-		if err != nil {
-			var eerr frame.ReadError
-			if errors.As(err, &eerr) {
+		var fr frame.Frame
+
+		if ch.isDatagram {
+			skipped := len(ch.datagramReader.buf) - ch.datagramReader.pos
+			err := ch.datagramReader.ReadPacket()
+			if err != nil {
+				return err
+			}
+
+			n := ch.frameReadWriter.BufByteReader.Buffered()
+			skipped += n
+			ch.frameReadWriter.BufByteReader.Discard(n) //nolint:errcheck
+
+			if skipped > 0 {
+				ch.node.pushEvent(&EventParseError{fmt.Errorf("skipped %d bytes", skipped), ch})
+			}
+
+			fr, err = ch.frameReadWriter.Read()
+			if err != nil {
 				ch.node.pushEvent(&EventParseError{err, ch})
-				// Resync buffer to next valid magic byte to prevent cascading errors
-				if _, resyncErr := ch.frameWriter.Resync(); resyncErr != nil {
-					// If resync fails with EOF or similar, return the error
-					if !errors.As(resyncErr, &eerr) {
-						return resyncErr
-					}
-					// Otherwise it's another parse-related issue, continue trying
-				}
 				continue
 			}
-			return err
+		} else {
+			var err error
+			fr, err = ch.frameReadWriter.Read()
+			if err != nil {
+				var eerr frame.ReadError
+				if errors.As(err, &eerr) {
+					ch.node.pushEvent(&EventParseError{err, ch})
+					if _, resyncErr := ch.frameReadWriter.Resync(); resyncErr != nil {
+						if !errors.As(resyncErr, &eerr) {
+							return resyncErr
+						}
+					}
+					continue
+				}
+				return err
+			}
 		}
 
 		evt := &EventFrame{fr, ch}
@@ -189,7 +262,7 @@ func (ch *Channel) runWriter(writerTerminate chan struct{}) error {
 				}
 
 			case frame.Frame:
-				err := ch.frameWriter.Write(wh)
+				err := ch.frameReadWriter.Write(wh)
 				if err != nil {
 					return err
 				}
@@ -211,7 +284,7 @@ func (ch *Channel) Endpoint() Endpoint {
 	return ch.endpoint
 }
 
-func (ch *Channel) write(what interface{}) {
+func (ch *Channel) write(what any) {
 	select {
 	case ch.chWrite <- what:
 	case <-ch.ctx.Done():

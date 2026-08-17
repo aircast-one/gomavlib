@@ -3,7 +3,7 @@
 package ualberta
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/common"
 )
 
 // SERIAL_CONTROL flags (bitmask)

@@ -2,27 +2,23 @@ package frame
 
 import (
 	"bufio"
+	"crypto/subtle"
 	"fmt"
-	"io"
 	"reflect"
-	"time"
 
-	"github.com/bluenviron/gomavlib/v3/pkg/dialect"
-	"github.com/bluenviron/gomavlib/v3/pkg/message"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialect"
+	"github.com/aircast-one/gomavlib/v4/pkg/message"
 )
 
 const (
 	bufferSize = 4096 // sized to absorb serial burst traffic; max frame is ~280 bytes
 )
 
-// 1st January 2015 GMT
-var signatureReferenceDate = time.Date(2015, 0o1, 0o1, 0, 0, 0, 0, time.UTC)
-
 func hasStringFields(msg message.Message) bool {
 	typ := reflect.TypeOf(msg).Elem()
 
 	for i := range typ.NumField() {
-		if typ.Field(i).Type == reflect.TypeOf("") {
+		if typ.Field(i).Type == reflect.TypeFor[string]() {
 			return true
 		}
 	}
@@ -43,50 +39,16 @@ func (e ReadError) Error() string {
 	return e.str
 }
 
-func newError(format string, args ...interface{}) ReadError {
+func newError(format string, args ...any) ReadError {
 	return ReadError{
 		str: fmt.Sprintf(format, args...),
 	}
-}
-
-// ReaderConf is the configuration of a Reader.
-//
-// Deprecated: configuration has been moved into Reader.
-type ReaderConf struct {
-	// underlying bytes reader.
-	Reader io.Reader
-
-	// (optional) dialect which contains the messages that will be read.
-	// If not provided, messages are decoded into the MessageRaw struct.
-	DialectRW *dialect.ReadWriter
-
-	// (optional) secret key used to validate incoming frames.
-	// Non-signed frames are discarded. This feature requires v2 frames.
-	InKey *V2Key
-}
-
-// NewReader allocates a Reader.
-//
-// Deprecated: replaced by Reader.Initialize().
-func NewReader(conf ReaderConf) (*Reader, error) {
-	r := &Reader{
-		ByteReader: conf.Reader,
-		DialectRW:  conf.DialectRW,
-		InKey:      conf.InKey,
-	}
-	err := r.Initialize()
-	return r, err
 }
 
 // Reader is a Frame reader.
 type Reader struct {
 	// underlying byte reader.
 	BufByteReader *bufio.Reader
-
-	// underlying byte reader.
-	//
-	// Deprecated: replaced by BufByteReader
-	ByteReader io.Reader
 
 	// (optional) dialect which contains the messages that will be read.
 	// If not provided, messages are decoded into the MessageRaw struct.
@@ -105,10 +67,6 @@ type Reader struct {
 
 // Initialize initializes a Reader.
 func (r *Reader) Initialize() error {
-	if r.ByteReader != nil {
-		r.BufByteReader = bufio.NewReaderSize(r.ByteReader, bufferSize)
-	}
-
 	if r.BufByteReader == nil {
 		return fmt.Errorf("BufByteReader not provided")
 	}
@@ -129,7 +87,8 @@ func (r *Reader) Resync() (int, error) {
 		}
 		if b == V1MagicByte || b == V2MagicByte {
 			// Found a valid magic byte, put it back so Read() can use it
-			if err := r.BufByteReader.UnreadByte(); err != nil {
+			err = r.BufByteReader.UnreadByte()
+			if err != nil {
 				return skipped, fmt.Errorf("unread failed: %w", err)
 			}
 			return skipped, nil
@@ -175,7 +134,7 @@ func (r *Reader) Read() (Frame, error) {
 			return nil, newError("signature not present")
 		}
 
-		if sig := ff.GenerateSignature(r.InKey); *sig != *ff.Signature {
+		if sig := ff.GenerateSignature(r.InKey); subtle.ConstantTimeCompare(sig[:], ff.Signature[:]) != 1 {
 			return nil, newError("wrong signature")
 		}
 

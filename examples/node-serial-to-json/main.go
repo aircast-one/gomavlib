@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/bluenviron/gomavlib/v3"
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v4"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/common"
 )
 
 // this example shows how to:
@@ -18,8 +18,8 @@ import (
 func main() {
 	// create a node which communicates with a serial endpoint
 	node := &gomavlib.Node{
-		Endpoints: []gomavlib.EndpointConf{
-			gomavlib.EndpointSerial{
+		Endpoints: []gomavlib.Endpoint{
+			&gomavlib.EndpointSerial{
 				Device: "/dev/ttyUSB0",
 				Baud:   57600,
 			},
@@ -40,7 +40,7 @@ func main() {
 			var enc []byte
 			enc, err = json.Marshal(struct {
 				Type    string
-				Content interface{}
+				Content any
 			}{
 				Type:    fmt.Sprintf("%T", frm.Message()),
 				Content: filterFloats(frm.Message()),

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bluenviron/gomavlib/v3/pkg/frame"
-	"github.com/bluenviron/gomavlib/v3/pkg/message"
+	"github.com/aircast-one/gomavlib/v4/pkg/frame"
+	"github.com/aircast-one/gomavlib/v4/pkg/message"
 )
 
 // 1st January 2015 GMT
@@ -64,13 +64,12 @@ type Writer struct {
 	// (optional) secret key used to sign outgoing frames.
 	// This feature requires v2 frames.
 	Key *frame.V2Key
-	// (optional) clock for time operations. Defaults to real time if nil.
-	Clock frame.Clock
 
 	//
 	// private
 	//
 
+	timeNow       func() time.Time
 	nextSeqNumber byte
 }
 
@@ -88,8 +87,9 @@ func (w *Writer) Initialize() error {
 	if w.Key != nil && w.Version != V2 {
 		return fmt.Errorf("OutKey requires V2 frames")
 	}
-	if w.Clock == nil {
-		w.Clock = frame.DefaultClock()
+
+	if w.timeNow == nil {
+		w.timeNow = time.Now
 	}
 
 	return nil
@@ -155,7 +155,7 @@ func (w *Writer) writeInner(fr frame.Frame) error {
 	if ff, ok := fr.(*frame.V2Frame); ok && w.Key != nil {
 		ff.SignatureLinkID = w.SignatureLinkID
 		// Timestamp in 10 microsecond units since 1st January 2015 GMT time
-		ff.SignatureTimestamp = uint64(w.Clock.Now().Sub(signatureReferenceDate)) / 10000
+		ff.SignatureTimestamp = uint64(w.timeNow().Sub(signatureReferenceDate)) / 10000
 		ff.Signature = ff.GenerateSignature(w.Key)
 	}
 

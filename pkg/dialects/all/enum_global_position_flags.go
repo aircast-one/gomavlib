@@ -3,15 +3,15 @@
 package all
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/development"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/common"
 )
 
 // Status flags for GLOBAL_POSITION
-type GLOBAL_POSITION_FLAGS = development.GLOBAL_POSITION_FLAGS
+type GLOBAL_POSITION_FLAGS = common.GLOBAL_POSITION_FLAGS
 
 const (
 	// Unhealthy sensor/estimator.
-	GLOBAL_POSITION_UNHEALTHY GLOBAL_POSITION_FLAGS = development.GLOBAL_POSITION_UNHEALTHY
+	GLOBAL_POSITION_UNHEALTHY GLOBAL_POSITION_FLAGS = common.GLOBAL_POSITION_UNHEALTHY
 	// True if the data originates from or is consumed by the primary estimator.
-	GLOBAL_POSITION_PRIMARY GLOBAL_POSITION_FLAGS = development.GLOBAL_POSITION_PRIMARY
+	GLOBAL_POSITION_PRIMARY GLOBAL_POSITION_FLAGS = common.GLOBAL_POSITION_PRIMARY
 )

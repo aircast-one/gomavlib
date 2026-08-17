@@ -4,8 +4,8 @@
 package all
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialect"
-	"github.com/bluenviron/gomavlib/v3/pkg/message"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialect"
+	"github.com/aircast-one/gomavlib/v4/pkg/message"
 )
 
 // Dialect contains the dialect definition.
@@ -191,6 +191,7 @@ var dial = &dialect.Dialect{
 		&MessageEscInfo{},
 		&MessageEscStatus{},
 		&MessageAirspeed{},
+		&MessageGlobalPositionSensor{},
 		&MessageWifiConfigAp{},
 		&MessageProtocolVersion{},
 		&MessageAisVessel{},
@@ -214,13 +215,17 @@ var dial = &dialect.Dialect{
 		&MessageDebugFloatArray{},
 		&MessageOrbitExecutionStatus{},
 		&MessageSmartBatteryInfo{},
+		&MessageFigureEightExecutionStatus{},
 		&MessageFuelStatus{},
 		&MessageBatteryInfo{},
 		&MessageGeneratorStatus{},
 		&MessageActuatorOutputStatus{},
+		&MessageRelayStatus{},
 		&MessageTimeEstimateToTarget{},
 		&MessageTunnel{},
 		&MessageCanFrame{},
+		&MessageCanfdFrame{},
+		&MessageCanFilterModify{},
 		&MessageOnboardComputerStatus{},
 		&MessageComponentInformation{},
 		&MessageComponentInformationBasic{},
@@ -235,8 +240,6 @@ var dial = &dialect.Dialect{
 		&MessageCurrentMode{},
 		&MessageAvailableModesMonitor{},
 		&MessageIlluminatorStatus{},
-		&MessageCanfdFrame{},
-		&MessageCanFilterModify{},
 		&MessageWheelDistance{},
 		&MessageWinchStatus{},
 		&MessageOpenDroneIdBasicId{},
@@ -365,18 +368,20 @@ var dial = &dialect.Dialect{
 		&MessageSatcomLinkStatus{},
 		&MessageSensorAirflowAngles{},
 		// development
-		&MessageGlobalPosition{},
 		&MessageSetVelocityLimits{},
 		&MessageVelocityLimits{},
-		&MessageFigureEightExecutionStatus{},
 		&MessageBatteryStatusV2{},
 		&MessageGroupStart{},
 		&MessageGroupEnd{},
 		&MessageRadioRcChannels{},
+		&MessageRcChannelsOverrideV2{},
 		&MessageGnssIntegrity{},
 		&MessageTargetAbsolute{},
 		&MessageTargetRelative{},
 		&MessageControlStatus{},
+		&MessageEscEeprom{},
+		&MessageRangingBeacon{},
+		&MessageEstimatorSensorFusionStatus{},
 		// pythonarraytest
 		&MessageArrayTest_0{},
 		&MessageArrayTest_1{},
@@ -416,6 +421,9 @@ var dial = &dialect.Dialect{
 		&MessageRexrothMotionPlatform{},
 		&MessageMotionCueExtra{},
 		&MessageEyeTrackingData{},
+		// stemstudios
+		&MessageLedStripConfig{},
+		&MessageLedStripState{},
 		// all
 	},
 }

@@ -41,6 +41,16 @@ const (
 	MAV_CMD_DO_FOLLOW_REPOSITION MAV_CMD = 33
 	// Start orbiting on the circumference of a circle defined by the parameters. Setting values to NaN/INT32_MAX (as appropriate) results in using defaults.
 	MAV_CMD_DO_ORBIT MAV_CMD = 34
+	// Fly a figure eight path as defined by the parameters.
+	// Set parameters to NaN/INT32_MAX (as appropriate) to use system-default values.
+	// The command is intended for fixed wing vehicles (and VTOL hybrids flying in fixed-wing mode), allowing POI tracking for gimbals that don't support infinite rotation.
+	// This command only defines the flight path. Speed should be set independently (use e.g. MAV_CMD_DO_CHANGE_SPEED).
+	// Yaw and other degrees of freedom are not specified, and will be flight-stack specific (on vehicles where they can be controlled independent of the heading).
+	MAV_CMD_DO_FIGURE_EIGHT MAV_CMD = 35
+	// Circular arc path waypoint.
+	// This defines the end/exit point and angle (param1) of an arc path from the previous waypoint. A position is required before this command to define the start of the arc (e.g. current position, a MAV_CMD_NAV_WAYPOINT, or a MAV_CMD_NAV_ARC_WAYPOINT).
+	// The resulting path is a circular arc in the NE frame, with the difference in height being defined by the difference in waypoint altitudes.
+	MAV_CMD_NAV_ARC_WAYPOINT MAV_CMD = 36
 	// Sets the region of interest (ROI) for a sensor set or the vehicle itself. This can then be used by the vehicle's control system to control the vehicle attitude and the attitude of various sensors such as cameras.
 	MAV_CMD_NAV_ROI MAV_CMD = 80
 	// Control autonomous path planning on the MAV.
@@ -82,7 +92,7 @@ const (
 	MAV_CMD_DO_SET_HOME MAV_CMD = 179
 	// Set a system parameter.  Caution!  Use of this command requires knowledge of the numeric enumeration value of the parameter.
 	MAV_CMD_DO_SET_PARAMETER MAV_CMD = 180
-	// Set a relay to a condition.
+	// Set a relay to a condition. The current value may optionally be reported using RELAY_STATUS.
 	MAV_CMD_DO_SET_RELAY MAV_CMD = 181
 	// Cycle a relay on and off for a desired number of cycles with a desired period.
 	MAV_CMD_DO_REPEAT_RELAY MAV_CMD = 182
@@ -230,7 +240,7 @@ const (
 	// Configures illuminator settings. An illuminator is a light source that is used for lighting up dark areas external to the system: e.g. a torch or searchlight (as opposed to a light source for illuminating the system itself, e.g. an indicator light).
 	MAV_CMD_DO_ILLUMINATOR_CONFIGURE MAV_CMD = 406
 	// Request the home position from the vehicle.
-	// The vehicle will ACK the command and then emit the HOME_POSITION message.
+	// The vehicle will ACK the command and emit the HOME_POSITION message.
 	MAV_CMD_GET_HOME_POSITION MAV_CMD = 410
 	// Inject artificial failure for testing purposes. Note that autopilots should implement an additional protection before accepting this command such as a specific param setting.
 	MAV_CMD_INJECT_FAILURE MAV_CMD = 420
@@ -279,6 +289,12 @@ const (
 	MAV_CMD_JUMP_TAG MAV_CMD = 600
 	// Jump to the matching tag in the mission list. Repeat this action for the specified number of times. A mission should contain a single matching tag for each jump. If this is not the case then a jump to a missing tag should complete the mission, and a jump where there are multiple matching tags should always select the one with the lowest mission sequence number.
 	MAV_CMD_DO_JUMP_TAG MAV_CMD = 601
+	// Sets the GNSS coordinates of the vehicle local origin (0,0,0) position.
+	// Vehicle should emit GPS_GLOBAL_ORIGIN irrespective of whether the origin is changed.
+	// This enables transform between the local coordinate frame and the global (GNSS) coordinate frame, which may be necessary when (for example) indoor and outdoor settings are connected and the MAV should move from in- to outdoor.
+	// This command supersedes SET_GPS_GLOBAL_ORIGIN.
+	// Should be sent in a COMMAND_INT (Expected frame is MAV_FRAME_GLOBAL, and this should be assumed when sent in COMMAND_LONG).
+	MAV_CMD_DO_SET_GLOBAL_ORIGIN MAV_CMD = 611
 	// Set gimbal manager pitch/yaw setpoints (low rate command). It is possible to set combinations of the values below. E.g. an angle as well as a desired angular rate can be used to get to this angle at a certain angular rate, or an angular rate only will result in continuous turning. NaN is to be used to signal unset. Note: only the gimbal manager will react to this command - it will be ignored by a gimbal device. Use GIMBAL_MANAGER_SET_PITCHYAW if you need to stream pitch/yaw setpoints at higher rate.
 	MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW MAV_CMD = 1000
 	// Gimbal configuration to set which sysid/compid is in primary and secondary control.
@@ -340,7 +356,7 @@ const (
 	MAV_CMD_DO_VTOL_TRANSITION MAV_CMD = 3000
 	// Request authorization to arm the vehicle to a external entity, the arm authorizer is responsible to request all data that is needs from the vehicle before authorize or deny the request.
 	// If approved the COMMAND_ACK message progress field should be set with period of time that this authorization is valid in seconds.
-	// If the authorization is denied COMMAND_ACK.result_param2 should be set with one of the reasons in ARM_AUTH_DENIED_REASON.
+	// If the authorization is denied COMMAND_ACK.result_param2 should be set with one of the reasons in MAV_ARM_AUTH_DENIED_REASON.
 	MAV_CMD_ARM_AUTHORIZATION_REQUEST MAV_CMD = 3001
 	// This command sets the submode to standard guided when vehicle is in guided mode. The vehicle holds position and altitude and the user can input the desired velocities along all three axes.
 	MAV_CMD_SET_GUIDED_SUBMODE_STANDARD MAV_CMD = 4000
@@ -376,6 +392,12 @@ const (
 	MAV_CMD_FIXED_MAG_CAL_YAW MAV_CMD = 42006
 	// Command to operate winch.
 	MAV_CMD_DO_WINCH MAV_CMD = 42600
+	// Change flight speed at a given rate. This slews the vehicle at a controllable rate between it's previous speed and the new one.
+	MAV_CMD_GUIDED_CHANGE_SPEED MAV_CMD = 43000
+	// Change target altitude at a given rate. This slews the vehicle at a controllable rate between it's previous altitude and the new one.
+	MAV_CMD_GUIDED_CHANGE_ALTITUDE MAV_CMD = 43001
+	// Change to target direction at a given rate, overriding previous heading/s. This slews the vehicle at a controllable rate between its previous heading and the new one.
+	MAV_CMD_GUIDED_CHANGE_HEADING MAV_CMD = 43002
 	// Provide an external position estimate for use when dead-reckoning. This is meant to be used for occasional position resets that may be provided by a external system such as a remote pilot using landmarks over a video link.
 	MAV_CMD_EXTERNAL_POSITION_ESTIMATE MAV_CMD = 43003
 	// User defined waypoint item. Ground Station will show the Vehicle as flying through this item.
@@ -408,7 +430,7 @@ const (
 	MAV_CMD_USER_4 MAV_CMD = 31013
 	// User defined command. Ground Station will not show the Vehicle as flying through this item. Example: MAV_CMD_DO_SET_PARAMETER item.
 	MAV_CMD_USER_5 MAV_CMD = 31014
-	// Request forwarding of CAN packets from the given CAN bus to this component. CAN Frames are sent using CAN_FRAME and CANFD_FRAME messages
+	// Request forwarding of CAN packets from the given CAN bus to this component via this MAVLink channel. CAN Frames are sent using CAN_FRAME and CANFD_FRAME messages
 	MAV_CMD_CAN_FORWARD MAV_CMD = 32000
 	// Mission command to reset Maximum Power Point Tracker (MPPT)
 	MAV_CMD_RESET_MPPT MAV_CMD = 40001
@@ -432,6 +454,8 @@ var value_to_label_MAV_CMD = map[MAV_CMD]string{
 	MAV_CMD_DO_FOLLOW:                          "MAV_CMD_DO_FOLLOW",
 	MAV_CMD_DO_FOLLOW_REPOSITION:               "MAV_CMD_DO_FOLLOW_REPOSITION",
 	MAV_CMD_DO_ORBIT:                           "MAV_CMD_DO_ORBIT",
+	MAV_CMD_DO_FIGURE_EIGHT:                    "MAV_CMD_DO_FIGURE_EIGHT",
+	MAV_CMD_NAV_ARC_WAYPOINT:                   "MAV_CMD_NAV_ARC_WAYPOINT",
 	MAV_CMD_NAV_ROI:                            "MAV_CMD_NAV_ROI",
 	MAV_CMD_NAV_PATHPLANNING:                   "MAV_CMD_NAV_PATHPLANNING",
 	MAV_CMD_NAV_SPLINE_WAYPOINT:                "MAV_CMD_NAV_SPLINE_WAYPOINT",
@@ -527,6 +551,7 @@ var value_to_label_MAV_CMD = map[MAV_CMD]string{
 	MAV_CMD_SET_CAMERA_SOURCE:                  "MAV_CMD_SET_CAMERA_SOURCE",
 	MAV_CMD_JUMP_TAG:                           "MAV_CMD_JUMP_TAG",
 	MAV_CMD_DO_JUMP_TAG:                        "MAV_CMD_DO_JUMP_TAG",
+	MAV_CMD_DO_SET_GLOBAL_ORIGIN:               "MAV_CMD_DO_SET_GLOBAL_ORIGIN",
 	MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW:         "MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW",
 	MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE:        "MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE",
 	MAV_CMD_IMAGE_START_CAPTURE:                "MAV_CMD_IMAGE_START_CAPTURE",
@@ -565,6 +590,9 @@ var value_to_label_MAV_CMD = map[MAV_CMD]string{
 	MAV_CMD_PAYLOAD_CONTROL_DEPLOY:             "MAV_CMD_PAYLOAD_CONTROL_DEPLOY",
 	MAV_CMD_FIXED_MAG_CAL_YAW:                  "MAV_CMD_FIXED_MAG_CAL_YAW",
 	MAV_CMD_DO_WINCH:                           "MAV_CMD_DO_WINCH",
+	MAV_CMD_GUIDED_CHANGE_SPEED:                "MAV_CMD_GUIDED_CHANGE_SPEED",
+	MAV_CMD_GUIDED_CHANGE_ALTITUDE:             "MAV_CMD_GUIDED_CHANGE_ALTITUDE",
+	MAV_CMD_GUIDED_CHANGE_HEADING:              "MAV_CMD_GUIDED_CHANGE_HEADING",
 	MAV_CMD_EXTERNAL_POSITION_ESTIMATE:         "MAV_CMD_EXTERNAL_POSITION_ESTIMATE",
 	MAV_CMD_WAYPOINT_USER_1:                    "MAV_CMD_WAYPOINT_USER_1",
 	MAV_CMD_WAYPOINT_USER_2:                    "MAV_CMD_WAYPOINT_USER_2",
@@ -602,6 +630,8 @@ var label_to_value_MAV_CMD = map[string]MAV_CMD{
 	"MAV_CMD_DO_FOLLOW":                          MAV_CMD_DO_FOLLOW,
 	"MAV_CMD_DO_FOLLOW_REPOSITION":               MAV_CMD_DO_FOLLOW_REPOSITION,
 	"MAV_CMD_DO_ORBIT":                           MAV_CMD_DO_ORBIT,
+	"MAV_CMD_DO_FIGURE_EIGHT":                    MAV_CMD_DO_FIGURE_EIGHT,
+	"MAV_CMD_NAV_ARC_WAYPOINT":                   MAV_CMD_NAV_ARC_WAYPOINT,
 	"MAV_CMD_NAV_ROI":                            MAV_CMD_NAV_ROI,
 	"MAV_CMD_NAV_PATHPLANNING":                   MAV_CMD_NAV_PATHPLANNING,
 	"MAV_CMD_NAV_SPLINE_WAYPOINT":                MAV_CMD_NAV_SPLINE_WAYPOINT,
@@ -697,6 +727,7 @@ var label_to_value_MAV_CMD = map[string]MAV_CMD{
 	"MAV_CMD_SET_CAMERA_SOURCE":                  MAV_CMD_SET_CAMERA_SOURCE,
 	"MAV_CMD_JUMP_TAG":                           MAV_CMD_JUMP_TAG,
 	"MAV_CMD_DO_JUMP_TAG":                        MAV_CMD_DO_JUMP_TAG,
+	"MAV_CMD_DO_SET_GLOBAL_ORIGIN":               MAV_CMD_DO_SET_GLOBAL_ORIGIN,
 	"MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW":         MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW,
 	"MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE":        MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE,
 	"MAV_CMD_IMAGE_START_CAPTURE":                MAV_CMD_IMAGE_START_CAPTURE,
@@ -735,6 +766,9 @@ var label_to_value_MAV_CMD = map[string]MAV_CMD{
 	"MAV_CMD_PAYLOAD_CONTROL_DEPLOY":             MAV_CMD_PAYLOAD_CONTROL_DEPLOY,
 	"MAV_CMD_FIXED_MAG_CAL_YAW":                  MAV_CMD_FIXED_MAG_CAL_YAW,
 	"MAV_CMD_DO_WINCH":                           MAV_CMD_DO_WINCH,
+	"MAV_CMD_GUIDED_CHANGE_SPEED":                MAV_CMD_GUIDED_CHANGE_SPEED,
+	"MAV_CMD_GUIDED_CHANGE_ALTITUDE":             MAV_CMD_GUIDED_CHANGE_ALTITUDE,
+	"MAV_CMD_GUIDED_CHANGE_HEADING":              MAV_CMD_GUIDED_CHANGE_HEADING,
 	"MAV_CMD_EXTERNAL_POSITION_ESTIMATE":         MAV_CMD_EXTERNAL_POSITION_ESTIMATE,
 	"MAV_CMD_WAYPOINT_USER_1":                    MAV_CMD_WAYPOINT_USER_1,
 	"MAV_CMD_WAYPOINT_USER_2":                    MAV_CMD_WAYPOINT_USER_2,

@@ -17,6 +17,10 @@ import (
 	"text/template"
 )
 
+const (
+	maxInboundDialectSize = 10 * 1024 * 1024
+)
+
 var (
 	reMsgName     = regexp.MustCompile("^[A-Z0-9_]+$")
 	reTypeIsArray = regexp.MustCompile(`^(.+?)\[([0-9]+)\]$`)
@@ -29,8 +33,8 @@ var tplDialect = template.Must(template.New("").Parse(
 package {{ .PkgName }}
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/message"
-	"github.com/bluenviron/gomavlib/v3/pkg/dialect"
+	"github.com/aircast-one/gomavlib/v4/pkg/message"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialect"
 )
 
 // Dialect contains the dialect definition.
@@ -58,7 +62,7 @@ package {{ .PkgName }}
 {{- if .Link }}
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/{{ .Enum.DefName }}"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/{{ .Enum.DefName }}"
 )
 
 {{- range .Enum.Description }}
@@ -185,7 +189,7 @@ package {{ .PkgName }}
 {{- if .Link }}
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/{{ .Msg.DefName }}"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/{{ .Msg.DefName }}"
 )
 
 {{- range .Msg.Description }}
@@ -260,7 +264,7 @@ func dialectNameDefToGo(in string) string {
 func parseDescription(in string) []string {
 	var lines []string
 
-	for _, line := range strings.Split(in, "\n") {
+	for line := range strings.SplitSeq(in, "\n") {
 		line = strings.TrimSpace(line)
 		if line != "" {
 			lines = append(lines, line)
@@ -477,7 +481,7 @@ func download(addr string) ([]byte, error) {
 		return nil, fmt.Errorf("bad return code: %v", res.StatusCode)
 	}
 
-	byt, err := io.ReadAll(res.Body)
+	byt, err := io.ReadAll(&customLimitReader{res.Body, maxInboundDialectSize})
 	if err != nil {
 		return nil, err
 	}
@@ -567,7 +571,7 @@ func processField(fieldDef *dialectField) (*outField, error) {
 	if len(tags) > 0 {
 		var tmp []string
 		for k, v := range tags {
-			tmp = append(tmp, fmt.Sprintf("%s:\"%s\"", k, v))
+			tmp = append(tmp, k+":\""+v+"\"")
 		}
 		sort.Strings(tmp)
 		outF.Line += " `" + strings.Join(tmp, " ") + "`"
@@ -583,7 +587,7 @@ func writeDialect(
 	enums map[string]*outEnum,
 ) error {
 	var buf bytes.Buffer
-	err := tplDialect.Execute(&buf, map[string]interface{}{
+	err := tplDialect.Execute(&buf, map[string]any{
 		"PkgName": defName,
 		"Version": func() int {
 			ret, _ := strconv.Atoi(version)
@@ -606,7 +610,7 @@ func writeEnum(
 	link bool,
 ) error {
 	var buf bytes.Buffer
-	err := tplEnum.Execute(&buf, map[string]interface{}{
+	err := tplEnum.Execute(&buf, map[string]any{
 		"PkgName": defName,
 		"Enum":    enum,
 		"Link":    link && defName != enum.DefName,
@@ -625,7 +629,7 @@ func writeMessage(
 	link bool,
 ) error {
 	var buf bytes.Buffer
-	err := tplMessage.Execute(&buf, map[string]interface{}{
+	err := tplMessage.Execute(&buf, map[string]any{
 		"PkgName": defName,
 		"Msg":     msg,
 		"Link":    link && defName != msg.DefName,

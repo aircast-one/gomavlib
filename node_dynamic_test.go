@@ -10,11 +10,11 @@ import (
 func TestNode_AddEndpoint(t *testing.T) {
 	// Create a node with one endpoint
 	node := &Node{
-		Endpoints: []EndpointConf{
-			EndpointUDPClient{Address: "127.0.0.1:5600"},
+		Endpoints: []Endpoint{
+			&EndpointUDPClient{Address: "127.0.0.1:5600"},
 		},
-		OutVersion:   V2,
-		OutSystemID:  10,
+		OutVersion:       V2,
+		OutSystemID:      10,
 		HeartbeatDisable: true,
 	}
 	err := node.Initialize()
@@ -26,7 +26,7 @@ func TestNode_AddEndpoint(t *testing.T) {
 	require.Len(t, endpoints, 1)
 
 	// Add a new endpoint dynamically
-	err = node.AddEndpoint(EndpointUDPClient{Address: "127.0.0.1:5601"})
+	err = node.AddEndpoint(&EndpointUDPClient{Address: "127.0.0.1:5601"})
 	require.NoError(t, err)
 
 	// Wait a bit for the endpoint to be added
@@ -40,12 +40,12 @@ func TestNode_AddEndpoint(t *testing.T) {
 func TestNode_RemoveEndpoint(t *testing.T) {
 	// Create a node with two endpoints
 	node := &Node{
-		Endpoints: []EndpointConf{
-			EndpointUDPClient{Address: "127.0.0.1:5600"},
-			EndpointUDPClient{Address: "127.0.0.1:5601"},
+		Endpoints: []Endpoint{
+			&EndpointUDPClient{Address: "127.0.0.1:5600"},
+			&EndpointUDPClient{Address: "127.0.0.1:5601"},
 		},
-		OutVersion:   V2,
-		OutSystemID:  10,
+		OutVersion:       V2,
+		OutSystemID:      10,
 		HeartbeatDisable: true,
 	}
 	err := node.Initialize()
@@ -71,11 +71,11 @@ func TestNode_RemoveEndpoint(t *testing.T) {
 func TestNode_RemoveEndpoint_NotFound(t *testing.T) {
 	// Create a node with one endpoint
 	node := &Node{
-		Endpoints: []EndpointConf{
-			EndpointUDPClient{Address: "127.0.0.1:5600"},
+		Endpoints: []Endpoint{
+			&EndpointUDPClient{Address: "127.0.0.1:5600"},
 		},
-		OutVersion:   V2,
-		OutSystemID:  10,
+		OutVersion:       V2,
+		OutSystemID:      10,
 		HeartbeatDisable: true,
 	}
 	err := node.Initialize()
@@ -83,7 +83,8 @@ func TestNode_RemoveEndpoint_NotFound(t *testing.T) {
 	defer node.Close()
 
 	// Try to remove a non-existent endpoint
-	ep, _ := EndpointUDPClient{Address: "127.0.0.1:9999"}.init(node)
+	ep := &EndpointUDPClient{Address: "127.0.0.1:9999"}
+	require.NoError(t, ep.init(node))
 	err = node.RemoveEndpoint(ep)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "endpoint not found")
@@ -92,11 +93,11 @@ func TestNode_RemoveEndpoint_NotFound(t *testing.T) {
 func TestNode_AddRemoveMultiple(t *testing.T) {
 	// Create a node with one endpoint
 	node := &Node{
-		Endpoints: []EndpointConf{
-			EndpointUDPClient{Address: "127.0.0.1:5600"},
+		Endpoints: []Endpoint{
+			&EndpointUDPClient{Address: "127.0.0.1:5600"},
 		},
-		OutVersion:   V2,
-		OutSystemID:  10,
+		OutVersion:       V2,
+		OutSystemID:      10,
 		HeartbeatDisable: true,
 	}
 	err := node.Initialize()
@@ -104,8 +105,8 @@ func TestNode_AddRemoveMultiple(t *testing.T) {
 	defer node.Close()
 
 	// Add multiple endpoints
-	for i := 0; i < 3; i++ {
-		err = node.AddEndpoint(EndpointUDPClient{Address: "127.0.0.1:5601"})
+	for range 3 {
+		err = node.AddEndpoint(&EndpointUDPClient{Address: "127.0.0.1:5601"})
 		require.NoError(t, err)
 	}
 
@@ -127,11 +128,11 @@ func TestNode_AddRemoveMultiple(t *testing.T) {
 func TestNode_AddEndpoint_AfterClose(t *testing.T) {
 	// Create and close a node
 	node := &Node{
-		Endpoints: []EndpointConf{
-			EndpointUDPClient{Address: "127.0.0.1:5600"},
+		Endpoints: []Endpoint{
+			&EndpointUDPClient{Address: "127.0.0.1:5600"},
 		},
-		OutVersion:   V2,
-		OutSystemID:  10,
+		OutVersion:       V2,
+		OutSystemID:      10,
 		HeartbeatDisable: true,
 	}
 	err := node.Initialize()
@@ -139,7 +140,7 @@ func TestNode_AddEndpoint_AfterClose(t *testing.T) {
 	node.Close()
 
 	// Try to add endpoint after close
-	err = node.AddEndpoint(EndpointUDPClient{Address: "127.0.0.1:5601"})
+	err = node.AddEndpoint(&EndpointUDPClient{Address: "127.0.0.1:5601"})
 	require.Error(t, err)
 	require.Equal(t, errTerminated, err)
 }

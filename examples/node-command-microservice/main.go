@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/bluenviron/gomavlib/v3"
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v4"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/common"
 )
 
 // This example shows how to:
@@ -84,8 +84,8 @@ func sleepWhileListening(node *gomavlib.Node, d time.Duration) {
 
 func main() {
 	node := &gomavlib.Node{
-		Endpoints: []gomavlib.EndpointConf{
-			gomavlib.EndpointSerial{
+		Endpoints: []gomavlib.Endpoint{
+			&gomavlib.EndpointSerial{
 				Device: "/dev/ttyUSB0",
 				Baud:   57600,
 			},

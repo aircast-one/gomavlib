@@ -5,6 +5,7 @@ import "fmt"
 // ConnectionState represents the current state of a durable connection endpoint
 type ConnectionState int32
 
+// Connection states of a durable endpoint.
 const (
 	ConnStateDisconnected ConnectionState = iota
 	ConnStateConnecting

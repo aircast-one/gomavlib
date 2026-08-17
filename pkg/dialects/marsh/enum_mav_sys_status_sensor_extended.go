@@ -3,7 +3,7 @@
 package marsh
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/common"
 )
 
 // These encode the sensors whose status is sent as part of the SYS_STATUS message in the extended fields.
@@ -12,4 +12,14 @@ type MAV_SYS_STATUS_SENSOR_EXTENDED = common.MAV_SYS_STATUS_SENSOR_EXTENDED
 const (
 	// 0x01 Recovery system (parachute, balloon, retracts etc)
 	MAV_SYS_STATUS_RECOVERY_SYSTEM MAV_SYS_STATUS_SENSOR_EXTENDED = common.MAV_SYS_STATUS_RECOVERY_SYSTEM
+	// 0x02 Leak detection
+	MAV_SYS_STATUS_SENSOR_LEAK MAV_SYS_STATUS_SENSOR_EXTENDED = common.MAV_SYS_STATUS_SENSOR_LEAK
+	// 0x04 3rd 3D gyro
+	MAV_SYS_STATUS_SENSOR_3D_GYRO3 MAV_SYS_STATUS_SENSOR_EXTENDED = common.MAV_SYS_STATUS_SENSOR_3D_GYRO3
+	// 0x08 3rd 3D accelerometer
+	MAV_SYS_STATUS_SENSOR_3D_ACCEL3 MAV_SYS_STATUS_SENSOR_EXTENDED = common.MAV_SYS_STATUS_SENSOR_3D_ACCEL3
+	// 0x10 4th 3D gyro
+	MAV_SYS_STATUS_SENSOR_3D_GYRO4 MAV_SYS_STATUS_SENSOR_EXTENDED = common.MAV_SYS_STATUS_SENSOR_3D_GYRO4
+	// 0x20 4th 3D accelerometer
+	MAV_SYS_STATUS_SENSOR_3D_ACCEL4 MAV_SYS_STATUS_SENSOR_EXTENDED = common.MAV_SYS_STATUS_SENSOR_3D_ACCEL4
 )

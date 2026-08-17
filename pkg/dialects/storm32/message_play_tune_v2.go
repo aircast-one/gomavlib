@@ -3,8 +3,8 @@
 package storm32
 
 import (
-	"github.com/bluenviron/gomavlib/v3/pkg/dialects/common"
+	"github.com/aircast-one/gomavlib/v4/pkg/dialects/common"
 )
 
-// Play vehicle tone/tune (buzzer). Supersedes message PLAY_TUNE.
+// Play vehicle tone/tune (buzzer). Supported tunes can be determined using SUPPORTED_TUNES. Supersedes message PLAY_TUNE.
 type MessagePlayTuneV2 = common.MessagePlayTuneV2
