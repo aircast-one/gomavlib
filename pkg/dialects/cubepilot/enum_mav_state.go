@@ -3,7 +3,7 @@
 package cubepilot
 
 import (
-	"github.com/aircast-one/gomavlib/v3/pkg/dialects/minimal"
+	"github.com/bluenviron/gomavlib/v3/pkg/dialects/minimal"
 )
 
 type MAV_STATE = minimal.MAV_STATE

@@ -3,7 +3,7 @@
 package all
 
 import (
-	"github.com/aircast-one/gomavlib/v3/pkg/dialects/marsh"
+	"github.com/bluenviron/gomavlib/v3/pkg/dialects/marsh"
 )
 
 // Mode of a motion platform system.

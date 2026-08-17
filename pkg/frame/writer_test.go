@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/aircast-one/gomavlib/v3/pkg/dialect"
-	"github.com/aircast-one/gomavlib/v3/pkg/message"
+	"github.com/bluenviron/gomavlib/v3/pkg/dialect"
+	"github.com/bluenviron/gomavlib/v3/pkg/message"
 )
 
 func TestWriterNewErrors(t *testing.T) {

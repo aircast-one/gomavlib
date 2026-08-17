@@ -3,7 +3,7 @@
 package all
 
 import (
-	"github.com/aircast-one/gomavlib/v3/pkg/dialects/storm32"
+	"github.com/bluenviron/gomavlib/v3/pkg/dialects/storm32"
 )
 
 // RADIO_LINK_TYPE enum.

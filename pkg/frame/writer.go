@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/aircast-one/gomavlib/v3/pkg/dialect"
-	"github.com/aircast-one/gomavlib/v3/pkg/message"
+	"github.com/bluenviron/gomavlib/v3/pkg/dialect"
+	"github.com/bluenviron/gomavlib/v3/pkg/message"
 )
 
 func encodeMessageInFrame(fr Frame, mp *message.ReadWriter) {
